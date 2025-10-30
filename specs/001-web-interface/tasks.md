@@ -53,12 +53,12 @@ Phase 1 (Setup) → Phase 2 (Foundation) → Phase 3 (US1) → Phase 4 (US2) →
 
 ### Tasks
 
-- [ ] T001 Initialize Go module with `go mod init github.com/shindakun/bskyarchive`
-- [ ] T002 Install all Go dependencies per plan.md (chi, gorilla/sessions, gorilla/csrf, bskyoauth, indigo, sqlite, yaml.v3, uuid)
-- [ ] T003 [P] Create directory structure per plan.md: cmd/bskyarchive, internal/{web,auth,archiver,storage,models}, tests/{unit,integration,contract}
-- [ ] T004 [P] Create web subdirectories: internal/web/{handlers,middleware,templates,static}
-- [ ] T005 [P] Create template subdirectories: internal/web/templates/{layouts,pages,partials}
-- [ ] T006 [P] Create static asset subdirectories: internal/web/static/{css,js,images}
+- [x] T001 Initialize Go module with `go mod init github.com/shindakun/bskyarchive`
+- [x] T002 Install all Go dependencies per plan.md (chi, gorilla/sessions, gorilla/csrf, bskyoauth, indigo, sqlite, yaml.v3, uuid)
+- [x] T003 [P] Create directory structure per plan.md: cmd/bskyarchive, internal/{web,auth,archiver,storage,models}, tests/{unit,integration,contract}
+- [x] T004 [P] Create web subdirectories: internal/web/{handlers,middleware,templates,static}
+- [x] T005 [P] Create template subdirectories: internal/web/templates/{layouts,pages,partials}
+- [x] T006 [P] Create static asset subdirectories: internal/web/static/{css,js,images}
 
 **Parallel Execution**: T003, T004, T005, T006 can run concurrently (different directories)
 
@@ -72,10 +72,10 @@ Phase 1 (Setup) → Phase 2 (Foundation) → Phase 3 (US1) → Phase 4 (US2) →
 
 ### Tasks
 
-- [ ] T007 Create config.yaml with server, archive, oauth, and rate_limit sections per research.md
-- [ ] T008 Implement configuration loading in internal/config/config.go with environment variable expansion
-- [ ] T009 Implement database initialization in internal/storage/db.go with production SQLite settings (WAL, NORMAL sync, 5s timeout, private cache, memory temp)
-- [ ] T010 [P] Download static assets: Pico CSS (pico.min.css) and HTMX (htmx.min.js) to internal/web/static/
+- [x] T007 Create config.yaml with server, archive, oauth, and rate_limit sections per research.md
+- [x] T008 Implement configuration loading in internal/config/config.go with environment variable expansion
+- [x] T009 Implement database initialization in internal/storage/db.go with production SQLite settings (WAL, NORMAL sync, 5s timeout, private cache, memory temp)
+- [x] T010 [P] Download static assets: Pico CSS (pico.min.css) and HTMX (htmx.min.js) to internal/web/static/
 
 **Parallel Execution**: T010 can run while T007-T009 are being implemented
 

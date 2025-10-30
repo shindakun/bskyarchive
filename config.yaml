@@ -1,0 +1,29 @@
+server:
+  port: 8080
+  host: "localhost"
+  read_timeout: 15s
+  write_timeout: 15s
+  idle_timeout: 60s
+  shutdown_timeout: 30s
+
+archive:
+  db_path: "./data/archive.db"
+  media_path: "./data/media"
+  max_archive_size_gb: 10
+  worker_count: 3
+  batch_size: 100
+
+oauth:
+  client_id: "${OAUTH_CLIENT_ID}"
+  client_secret: "${OAUTH_CLIENT_SECRET}"
+  redirect_url: "${OAUTH_REDIRECT_URL}"
+  scopes:
+    - "atproto"
+    - "transition:generic"
+  session_secret: "${SESSION_SECRET}"
+  session_max_age: 604800  # 7 days in seconds
+
+rate_limit:
+  requests_per_window: 300
+  window_duration: 5m
+  burst: 10
