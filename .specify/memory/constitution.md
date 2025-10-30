@@ -93,10 +93,11 @@ Follow-up TODOs: None
 - Clear separation of concerns: auth, collector, storage, search, exporter, scheduler, web
 - Database migrations for schema versioning
 - CLI built with cobra for consistent user experience
-- Web framework (net/http stdlib or lightweight framework)
+- Web framework (net/http stdlib)
 - Full-text search with bleve
 - Comprehensive error handling with retry logic
 - Configuration management via YAML/JSON files
+- HTML, Picocss, HTMX, and Vanilla JavaScript
 
 **Testing requirements:**
 - Unit tests for business logic
