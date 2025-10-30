@@ -6,11 +6,227 @@
 
 ## Overview
 
-This document defines the data structures used by the web interface layer. These models represent session data, UI state, and view models for rendering templates. The actual archive data models (posts, media, profiles) are owned by the archival backend and accessed via service interfaces.
+This document defines all data structures used by the Bluesky Personal Archive Tool. These models represent:
+1. **Archive Data**: Posts, profiles, and media fetched from Bluesky via AT Protocol
+2. **Session Management**: User authentication and session state
+3. **Operational State**: Archive operations and progress tracking
+4. **View Models**: Data structures for rendering HTML templates
+
+All archive data is stored in SQLite with full-text search indexing.
 
 ## Core Entities
 
-### 1. UserSession
+### Archive Data Models
+
+#### Post
+
+Represents a Bluesky post archived from AT Protocol.
+
+**Fields**:
+- `URI` (string): AT Protocol URI (e.g., "at://did:plc:xyz/app.bsky.feed.post/abc123")
+- `CID` (string): Content Identifier (IPFS-style hash)
+- `DID` (string): Author's Decentralized Identifier
+- `Text` (string): Post text content (max 300 chars per AT Protocol)
+- `CreatedAt` (time.Time): When the post was originally created on Bluesky
+- `IndexedAt` (time.Time): When Bluesky indexed the post
+- `HasMedia` (bool): Whether post has embedded media
+- `LikeCount` (int): Number of likes
+- `RepostCount` (int): Number of reposts
+- `ReplyCount` (int): Number of replies
+- `IsReply` (bool): Whether this post is a reply to another
+- `ReplyParent` (string): URI of parent post if reply
+- `EmbedType` (string): Type of embed ("images", "external", "record", null)
+- `EmbedData` (JSON): Full embed structure from AT Protocol
+- `Labels` (JSON): Content labels/warnings
+- `ArchivedAt` (time.Time): When this post was archived locally
+
+**Validation Rules**:
+- URI must not be empty and match AT Protocol format
+- CID must not be empty
+- Text max length: 300 characters
+- CreatedAt must be in the past
+- Counts must be >= 0
+- If IsReply is true, ReplyParent must not be empty
+
+**Relationships**:
+- Has many Media (one-to-many)
+- Indexed by posts_fts for full-text search
+
+**Go Struct**:
+```go
+type Post struct {
+    URI         string
+    CID         string
+    DID         string
+    Text        string
+    CreatedAt   time.Time
+    IndexedAt   time.Time
+    HasMedia    bool
+    LikeCount   int
+    RepostCount int
+    ReplyCount  int
+    IsReply     bool
+    ReplyParent string
+    EmbedType   string
+    EmbedData   json.RawMessage
+    Labels      json.RawMessage
+    ArchivedAt  time.Time
+}
+```
+
+**SQL Schema**:
+```sql
+CREATE TABLE posts (
+  uri TEXT PRIMARY KEY,
+  cid TEXT NOT NULL,
+  did TEXT NOT NULL,
+  text TEXT,
+  created_at TIMESTAMP NOT NULL,
+  indexed_at TIMESTAMP NOT NULL,
+  has_media BOOLEAN DEFAULT 0,
+  like_count INTEGER DEFAULT 0,
+  repost_count INTEGER DEFAULT 0,
+  reply_count INTEGER DEFAULT 0,
+  is_reply BOOLEAN DEFAULT 0,
+  reply_parent TEXT,
+  embed_type TEXT,
+  embed_data JSON,
+  labels JSON,
+  archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_posts_did ON posts(did);
+CREATE INDEX idx_posts_created_at ON posts(created_at DESC);
+
+CREATE VIRTUAL TABLE posts_fts USING fts5(
+  uri UNINDEXED,
+  text,
+  content='posts',
+  content_rowid='rowid'
+);
+```
+
+---
+
+#### Profile
+
+Represents a snapshot of a Bluesky user profile at a point in time.
+
+**Fields**:
+- `DID` (string): Decentralized Identifier
+- `Handle` (string): User's handle (e.g., "user.bsky.social")
+- `DisplayName` (string): User's display name
+- `Description` (string): Profile bio/description
+- `AvatarURL` (string): URL to avatar image
+- `BannerURL` (string): URL to banner image
+- `FollowersCount` (int): Number of followers
+- `FollowsCount` (int): Number of accounts following
+- `PostsCount` (int): Total number of posts
+- `SnapshotAt` (time.Time): When this snapshot was taken
+
+**Validation Rules**:
+- DID must not be empty
+- Handle must match Bluesky format (alphanumeric + dots)
+- Counts must be >= 0
+- SnapshotAt must be in the past
+
+**Relationships**:
+- Linked to Posts via DID (one-to-many)
+- Multiple snapshots per user over time
+
+**Go Struct**:
+```go
+type Profile struct {
+    DID            string
+    Handle         string
+    DisplayName    string
+    Description    string
+    AvatarURL      string
+    BannerURL      string
+    FollowersCount int
+    FollowsCount   int
+    PostsCount     int
+    SnapshotAt     time.Time
+}
+```
+
+**SQL Schema**:
+```sql
+CREATE TABLE profiles (
+  did TEXT NOT NULL,
+  handle TEXT NOT NULL,
+  display_name TEXT,
+  description TEXT,
+  avatar_url TEXT,
+  banner_url TEXT,
+  followers_count INTEGER,
+  follows_count INTEGER,
+  posts_count INTEGER,
+  snapshot_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (did, snapshot_at)
+);
+```
+
+---
+
+#### Media
+
+Represents media files (images, videos) embedded in posts.
+
+**Fields**:
+- `ID` (int): Auto-incrementing primary key
+- `PostURI` (string): URI of the post this media belongs to
+- `MediaURL` (string): Original Bluesky CDN URL
+- `LocalPath` (string): Local filesystem path (e.g., "archive/media/2024/10/abc123.jpg")
+- `AltText` (string): Alternative text for accessibility
+- `MimeType` (string): MIME type (e.g., "image/jpeg", "video/mp4")
+- `SizeBytes` (int64): File size in bytes
+- `DownloadedAt` (time.Time): When the file was downloaded
+
+**Validation Rules**:
+- PostURI must not be empty and reference valid post
+- MediaURL must be valid HTTP(S) URL
+- LocalPath must not be empty after download
+- SizeBytes must be > 0
+- MimeType must be valid
+
+**Relationships**:
+- Belongs to Post (many-to-one)
+
+**Go Struct**:
+```go
+type Media struct {
+    ID           int
+    PostURI      string
+    MediaURL     string
+    LocalPath    string
+    AltText      string
+    MimeType     string
+    SizeBytes    int64
+    DownloadedAt time.Time
+}
+```
+
+**SQL Schema**:
+```sql
+CREATE TABLE media (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  post_uri TEXT NOT NULL,
+  media_url TEXT NOT NULL,
+  local_path TEXT NOT NULL,
+  alt_text TEXT,
+  mime_type TEXT,
+  size_bytes INTEGER,
+  downloaded_at TIMESTAMP,
+  FOREIGN KEY (post_uri) REFERENCES posts(uri)
+);
+```
+
+---
+
+### Session & Operational Models
+
+#### 1. UserSession
 
 Represents an authenticated user's session stored in encrypted cookies.
 
@@ -313,41 +529,46 @@ type AboutPageData struct {
 }
 ```
 
-## Service Interface
+## Storage Layer Interface
 
-The web layer communicates with the archival backend via a service interface. This interface is defined here for clarity but implemented by the backend.
+The storage layer provides methods for persisting and retrieving data from SQLite. All methods are implemented in `internal/storage/`.
 
-### ArchiveService Interface
+### Storage Interface
 
 **Methods**:
 
 ```go
-type ArchiveService interface {
-    // GetStatus retrieves the current archive status for a user
-    GetStatus(ctx context.Context, did string) (*ArchiveStatus, error)
-
-    // InitiateSync starts a new archive sync operation
-    // Returns operation ID and error
-    // Returns error if an operation is already running
-    InitiateSync(ctx context.Context, did string, fullSync bool) (string, error)
-
-    // GetOperationStatus retrieves the status of an ongoing operation
-    GetOperationStatus(ctx context.Context, operationID string) (*ArchiveOperation, error)
-
-    // ListPosts retrieves a paginated list of posts for browse interface
-    // opts includes page number and page size
+type Store interface {
+    // Posts
+    SavePost(ctx context.Context, post *Post) error
+    GetPost(ctx context.Context, uri string) (*Post, error)
     ListPosts(ctx context.Context, did string, page, pageSize int) (*PostPage, error)
+    SearchPosts(ctx context.Context, query string, page, pageSize int) (*PostPage, error)
 
-    // CancelOperation cancels an in-progress operation
-    CancelOperation(ctx context.Context, operationID string) error
+    // Profiles
+    SaveProfile(ctx context.Context, profile *Profile) error
+    GetLatestProfile(ctx context.Context, did string) (*Profile, error)
+
+    // Media
+    SaveMedia(ctx context.Context, media *Media) error
+    ListMediaForPost(ctx context.Context, postURI string) ([]Media, error)
+
+    // Operations
+    CreateOperation(ctx context.Context, op *ArchiveOperation) error
+    UpdateOperation(ctx context.Context, op *ArchiveOperation) error
+    GetOperation(ctx context.Context, operationID string) (*ArchiveOperation, error)
+    GetActiveOperation(ctx context.Context, did string) (*ArchiveOperation, error)
+
+    // Stats
+    GetArchiveStatus(ctx context.Context, did string) (*ArchiveStatus, error)
 }
 ```
 
 **Error Cases**:
-- `ErrNotFound`: User or operation not found
+- `ErrNotFound`: Resource not found
+- `ErrDuplicate`: Attempt to insert duplicate primary key
 - `ErrOperationInProgress`: Cannot start new operation while one is running
-- `ErrInvalidPage`: Invalid page number or page size
-- `ErrUnauthorized`: User does not have access to resource
+- `ErrInvalidInput`: Invalid parameters (e.g., negative page number)
 
 ## Enumerations
 
@@ -422,12 +643,18 @@ All view models include CSRF tokens for form protection.
 ## Summary
 
 Data models defined for:
-1. **Session Management**: UserSession with 7-day expiration
-2. **Archive Display**: ArchiveStatus, ArchiveOperation for UI state
-3. **Content Browsing**: PostSummary, PostPage for paginated lists
-4. **Template Rendering**: View models for each page type
-5. **Service Interface**: ArchiveService for backend communication
+1. **Archive Data**: Post, Profile, Media (AT Protocol entities stored in SQLite)
+2. **Session Management**: UserSession with 7-day expiration
+3. **Operational State**: ArchiveOperation for tracking sync progress
+4. **Archive Display**: ArchiveStatus for UI dashboard
+5. **Content Browsing**: PostSummary, PostPage for paginated lists
+6. **Template Rendering**: View models for each page type
+7. **Storage Layer**: Store interface for database operations
 
-All models support the functional requirements from spec.md and align with constitution principles (privacy, efficiency, clear data structures).
+All models support the functional requirements from spec.md and align with constitution principles:
+- **Privacy**: All data stored locally in SQLite
+- **Comprehensive Archival**: Post, Profile, Media models capture complete user history
+- **Efficient Search**: FTS5 indexing for <100ms search queries
+- **Clear Data Structures**: Well-defined schemas with validation rules
 
 Ready to proceed to API contracts.

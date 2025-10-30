@@ -22,6 +22,7 @@ tests/
 Go 1.21+: Follow standard conventions
 
 ## Recent Changes
+- 001-web-interface: Added Go 1.21+
 
 - 001-web-interface: Added Go 1.21+
 

@@ -6,7 +6,7 @@
 
 ## Overview
 
-This guide provides step-by-step instructions for developing the web interface feature for the Bluesky Personal Archive Tool. Follow this guide to set up your development environment, understand the architecture, and implement the feature according to the plan.
+This guide provides step-by-step instructions for developing the complete Bluesky Personal Archive Tool, including web interface, AT Protocol data collection, and local storage. Follow this guide to set up your development environment, understand the architecture, and implement the feature according to the plan.
 
 ## Prerequisites
 
@@ -61,9 +61,11 @@ cd /Users/steve/go/src/github.com/shindakun/bskyarchive
 
 # Install Go dependencies
 go get github.com/shindakun/bskyoauth
+go get github.com/bluesky-social/indigo
 go get github.com/go-chi/chi/v5
 go get github.com/gorilla/sessions
 go get github.com/gorilla/csrf
+go get modernc.org/sqlite
 
 # Download HTMX and Pico CSS (place in internal/web/static/)
 # HTMX: https://unpkg.com/htmx.org@1.9.10/dist/htmx.min.js
@@ -190,10 +192,11 @@ Follow this order to build the feature incrementally:
 
 **Goal**: Display archive status and allow users to initiate syncs
 
-1. **Create archive service client** (`internal/archive/client.go`)
-   - Define ArchiveService interface
-   - Implement methods to communicate with archival backend
-   - Mock implementation for testing
+1. **Implement archiver and storage** (`internal/archiver/`, `internal/storage/`)
+   - Create AT Protocol client wrapper
+   - Implement post/profile/media collector
+   - Implement SQLite storage layer with migrations
+   - Create background worker for sync operations
 
 2. **Create dashboard page** (`internal/web/handlers/dashboard.go`, `internal/web/templates/pages/dashboard.html`)
    - Fetch archive status from backend

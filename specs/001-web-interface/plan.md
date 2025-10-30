@@ -7,22 +7,26 @@
 
 ## Summary
 
-Create a locally hosted web interface for the Bluesky Personal Archive Tool that provides OAuth authentication, archive management, and content browsing. The interface will feature a modern, responsive dark theme using Go for the backend, HTML templates, vanilla JavaScript, and HTMX for dynamic interactions. Users will authenticate via bskyoauth, manage archival operations, and browse their archived content through an intuitive web UI.
+Create a complete locally hosted Bluesky Personal Archive Tool that combines web interface, data collection, and storage in a single application. Users authenticate via OAuth (bskyoauth), and the tool fetches their posts, profiles, and media directly from Bluesky using the AT Protocol (indigo SDK). All data is stored locally in SQLite with file-based media storage. The web interface features a modern, responsive dark theme using Go for the backend, HTML templates, vanilla JavaScript, and HTMX for dynamic interactions. Users can initiate archive syncs, monitor progress in real-time, and browse their archived content through an intuitive web UI.
 
 ## Technical Context
 
 **Language/Version**: Go 1.21+
 **Primary Dependencies**:
 - github.com/shindakun/bskyoauth (OAuth authentication)
+- github.com/bluesky-social/indigo (AT Protocol SDK for Go)
 - net/http (standard library HTTP server)
 - html/template (server-side HTML rendering)
+- database/sql + modernc.org/sqlite (SQLite for archive storage and indexing)
 - HTMX (client-side dynamic interactions)
 - Vanilla JavaScript (progressive enhancement)
 - Pico CSS or similar minimal CSS framework for dark theme
 
 **Storage**:
 - Session data: Encrypted cookies or server-side session store
-- Archive data: File-based storage (JSON) and SQLite for indexing (from existing archival system)
+- Archive data: SQLite database for posts, profiles, media metadata
+- Media files: File-based storage (organized by year/month)
+- Full-text search: SQLite FTS5 for fast content search
 
 **Testing**: Go testing (testing package), table-driven tests for handlers, integration tests for OAuth flow
 
@@ -40,7 +44,8 @@ Create a locally hosted web interface for the Bluesky Personal Archive Tool that
 - Localhost-only (no public internet exposure required)
 - Single-user instance per installation
 - Session expiration: 7 days of inactivity
-- Must integrate with existing archival backend services
+- Must implement AT Protocol communication for data collection
+- Must handle Bluesky API rate limits (300 requests per 5 minutes)
 - WCAG AA accessibility compliance for dark theme
 
 **Scale/Scope**:
@@ -145,21 +150,46 @@ internal/
 ├── auth/                   # Authentication service
 │   ├── oauth.go           # bskyoauth integration
 │   └── session.go         # Session store
-└── archive/               # Archive service interface
-    └── client.go          # Client for existing archive backend
+├── archiver/               # Bluesky data collection
+│   ├── client.go          # AT Protocol client wrapper
+│   ├── collector.go       # Post/profile/media collection
+│   ├── worker.go          # Background sync worker
+│   └── ratelimit.go       # Rate limit handling
+├── storage/                # Data persistence
+│   ├── db.go              # SQLite database setup
+│   ├── posts.go           # Post storage operations
+│   ├── profiles.go        # Profile storage operations
+│   ├── media.go           # Media download & storage
+│   ├── search.go          # Full-text search (FTS5)
+│   └── migrations/        # Database schema migrations
+│       └── 001_initial.sql
+└── models/                 # Data models
+    ├── post.go            # Post structures
+    ├── profile.go         # Profile structures
+    ├── session.go         # Session structures
+    └── operation.go       # Archive operation tracking
 
 cmd/
-└── web/
-    └── main.go            # Web server entry point
+└── bskyarchive/
+    └── main.go            # Application entry point
 
 tests/
 ├── integration/
-│   └── oauth_test.go     # OAuth flow integration tests
+│   ├── oauth_test.go      # OAuth flow tests
+│   └── archiver_test.go   # AT Protocol integration tests
 └── unit/
-    └── handlers_test.go  # Handler unit tests
+    ├── handlers_test.go   # Handler unit tests
+    ├── collector_test.go  # Collection logic tests
+    └── storage_test.go    # Storage layer tests
 ```
 
-**Structure Decision**: This is a web application adding a web interface layer to the existing Bluesky archive tool. The structure follows Go conventions with `internal/web` containing all web-specific code (handlers, middleware, templates, static assets), `cmd/web` for the server entry point, and integrations with existing `internal/auth` and `internal/archive` services.
+**Structure Decision**: This is a complete web application that combines web interface, AT Protocol data collection, and local storage. The structure follows Go conventions with:
+- `internal/web`: Web interface (handlers, middleware, templates, static assets)
+- `internal/archiver`: Bluesky data collection via AT Protocol
+- `internal/storage`: SQLite persistence layer with migrations
+- `internal/models`: Shared data structures
+- `internal/auth`: OAuth and session management
+- `cmd/bskyarchive`: Single binary entry point
 
 ## Complexity Tracking
 
