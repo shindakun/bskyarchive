@@ -139,3 +139,8 @@ func (om *OAuthManager) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	// Redirect to landing page
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
+
+// ClientMetadataHandler returns the handler for OAuth client metadata
+func (om *OAuthManager) ClientMetadataHandler() http.HandlerFunc {
+	return om.client.ClientMetadataHandler()
+}

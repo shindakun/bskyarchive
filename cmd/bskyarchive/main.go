@@ -70,6 +70,9 @@ func main() {
 	r.Get("/", h.Landing)
 	r.Get("/about", h.About)
 
+	// OAuth client metadata (required by bskyoauth)
+	r.Get("/client-metadata.json", oauthManager.ClientMetadataHandler())
+
 	// Auth routes
 	r.Route("/auth", func(r chi.Router) {
 		r.HandleFunc("/login", h.Login)
