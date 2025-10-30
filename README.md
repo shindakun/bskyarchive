@@ -152,6 +152,6 @@ See LICENSE file for details.
 
 ## Author
 
-Steve Domino
+Steve Layton
 - GitHub: [@shindakun](https://github.com/shindakun)
 - Bluesky: [@shindakun.net](https://bsky.app/profile/shindakun.net)
