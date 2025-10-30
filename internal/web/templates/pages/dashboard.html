@@ -1,0 +1,51 @@
+{{define "title"}}Dashboard - Bluesky Archive{{end}}
+
+{{define "nav"}}
+<nav class="container">
+    <ul>
+        <li><strong>Bluesky Archive</strong></li>
+    </ul>
+    <ul>
+        <li><a href="/dashboard">Dashboard</a></li>
+        <li><a href="/archive">Archive</a></li>
+        <li><a href="/browse">Browse</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a href="/auth/logout">Logout</a></li>
+    </ul>
+</nav>
+{{end}}
+
+{{define "content"}}
+<section>
+    <hgroup>
+        <h1>Welcome, {{.Session.Handle}}</h1>
+        <h2>Dashboard</h2>
+    </hgroup>
+
+    <div class="grid">
+        <article>
+            <header><strong>Archive Status</strong></header>
+            <p>No archive operations yet. Visit the Archive page to get started.</p>
+            <footer>
+                <a href="/archive" role="button">Manage Archive</a>
+            </footer>
+        </article>
+
+        <article>
+            <header><strong>Quick Stats</strong></header>
+            <p>Posts: <strong>0</strong></p>
+            <p>Media files: <strong>0</strong></p>
+            <p>Last sync: <em>Never</em></p>
+        </article>
+    </div>
+
+    <article>
+        <header><strong>Getting Started</strong></header>
+        <ol>
+            <li>Go to the <a href="/archive">Archive</a> page</li>
+            <li>Start your first archive operation to fetch your posts</li>
+            <li>Browse and search your archived content</li>
+        </ol>
+    </article>
+</section>
+{{end}}

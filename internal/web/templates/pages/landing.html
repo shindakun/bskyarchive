@@ -1,0 +1,39 @@
+{{define "title"}}Bluesky Personal Archive Tool{{end}}
+
+{{define "nav"}}
+<nav class="container">
+    <ul>
+        <li><strong>Bluesky Archive</strong></li>
+    </ul>
+    <ul>
+        <li><a href="/about">About</a></li>
+        <li><a href="/auth/login" role="button">Sign in with Bluesky</a></li>
+    </ul>
+</nav>
+{{end}}
+
+{{define "content"}}
+<section>
+    <hgroup>
+        <h1>Bluesky Personal Archive Tool</h1>
+        <h2>Archive and search your Bluesky posts locally</h2>
+    </hgroup>
+
+    <p>
+        A local-first solution for archiving your Bluesky content. Keep complete control
+        of your data with full-text search, multiple export formats, and incremental updates.
+    </p>
+
+    <h3>Features</h3>
+    <ul>
+        <li><strong>Privacy-first:</strong> All data stored locally on your machine</li>
+        <li><strong>Full-text search:</strong> Find any post instantly with SQLite FTS5</li>
+        <li><strong>Complete archive:</strong> Posts, media, profiles, and engagement metrics</li>
+        <li><strong>Fast & efficient:</strong> Incremental updates and rate-limited operations</li>
+    </ul>
+
+    <p>
+        <a href="/auth/login" role="button" class="primary">Get Started - Sign in with Bluesky</a>
+    </p>
+</section>
+{{end}}

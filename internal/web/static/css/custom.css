@@ -1,0 +1,56 @@
+/* Custom dark theme overrides for Bluesky Archive */
+:root[data-theme="dark"] {
+    --primary: #1185fe; /* Bluesky blue */
+    --primary-hover: #0d6ecd;
+    --primary-focus: rgba(17, 133, 254, 0.125);
+}
+
+/* Error and success messages */
+.error-message {
+    background-color: var(--del-color);
+    border-left: 4px solid var(--del-color);
+    margin-bottom: 1rem;
+}
+
+.success-message {
+    background-color: var(--ins-color);
+    border-left: 4px solid var(--ins-color);
+    margin-bottom: 1rem;
+}
+
+/* Button styling */
+button.primary,
+a[role="button"].primary {
+    background-color: var(--primary);
+    border-color: var(--primary);
+}
+
+button.primary:hover,
+a[role="button"].primary:hover {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+
+/* Navigation improvements */
+nav {
+    margin-bottom: 2rem;
+}
+
+/* Footer */
+footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--muted-border-color);
+    text-align: center;
+}
+
+/* Grid spacing */
+.grid > article {
+    margin-bottom: 0;
+}
+
+/* Stats display */
+article p strong {
+    color: var(--primary);
+    font-size: 1.25rem;
+}

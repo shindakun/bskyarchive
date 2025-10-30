@@ -12,6 +12,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/shindakun/bskyarchive/internal/auth"
+	"github.com/shindakun/bskyarchive/internal/config"
 	"github.com/shindakun/bskyarchive/internal/storage"
 	"github.com/shindakun/bskyarchive/internal/web/handlers"
 	webmiddleware "github.com/shindakun/bskyarchive/internal/web/middleware"
@@ -22,19 +24,35 @@ func main() {
 	logger := log.New(os.Stdout, "[bskyarchive] ", log.LstdFlags|log.Lshortfile)
 	logger.Println("Starting Bluesky Archive Tool...")
 
-	// Initialize database
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		dbPath = "./data/archive.db"
+	// Load configuration
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		configPath = "./config.yaml"
 	}
-	logger.Printf("Initializing database at: %s", dbPath)
 
-	db, err := storage.InitDB(dbPath)
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		logger.Fatalf("Failed to load configuration: %v", err)
+	}
+	logger.Println("Configuration loaded successfully")
+
+	// Initialize database
+	logger.Printf("Initializing database at: %s", cfg.Archive.DBPath)
+	db, err := storage.InitDB(cfg.Archive.DBPath)
 	if err != nil {
 		logger.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 	logger.Println("Database initialized successfully")
+
+	// Initialize session manager
+	sessionManager := auth.InitSessions(cfg.OAuth.SessionSecret, db)
+	logger.Println("Session manager initialized")
+
+	// Initialize OAuth manager
+	baseURL := fmt.Sprintf("http://%s", cfg.GetAddr())
+	oauthManager := auth.InitOAuth(baseURL, cfg.OAuth.Scopes, sessionManager)
+	logger.Println("OAuth manager initialized")
 
 	// Initialize router
 	r := chi.NewRouter()
@@ -42,16 +60,12 @@ func main() {
 	// Global middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	r.Use(webmiddleware.LoggingMiddleware(logger))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 
-	// Custom middleware
-	sessionStore := webmiddleware.NewSessionStore()
-	r.Use(webmiddleware.SessionMiddleware(sessionStore))
-
 	// Initialize handlers
-	h := handlers.New(db, sessionStore, logger)
+	h := handlers.New(db, sessionManager, oauthManager, logger)
 
 	// Public routes
 	r.Get("/", h.Landing)
@@ -59,14 +73,14 @@ func main() {
 
 	// Auth routes
 	r.Route("/auth", func(r chi.Router) {
-		r.Get("/login", h.Login)
+		r.HandleFunc("/login", h.Login)
 		r.Get("/callback", h.Callback)
 		r.Get("/logout", h.Logout)
 	})
 
 	// Protected routes (require authentication)
 	r.Group(func(r chi.Router) {
-		r.Use(webmiddleware.RequireAuth)
+		r.Use(webmiddleware.RequireAuth(sessionManager))
 		r.Get("/dashboard", h.Dashboard)
 		r.Get("/archive", h.Archive)
 		r.Post("/archive/start", h.ArchiveStart)
@@ -79,22 +93,17 @@ func main() {
 	r.Get("/static/*", h.ServeStatic)
 
 	// HTTP server configuration
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%s", port),
+		Addr:         cfg.GetAddr(),
 		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
 	// Start server in goroutine
 	go func() {
-		logger.Printf("Server starting on http://localhost:%s", port)
+		logger.Printf("Server starting on http://%s", cfg.GetAddr())
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatalf("Server failed to start: %v", err)
 		}
@@ -106,7 +115,7 @@ func main() {
 	<-quit
 
 	logger.Println("Server shutting down...")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {

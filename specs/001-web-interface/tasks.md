@@ -127,22 +127,22 @@ Phase 1 (Setup) → Phase 2 (Foundation) → Phase 3 (US1) → Phase 4 (US2) →
 
 ### 3.6: Templates & Static Assets (US1)
 
-- [ ] T025 [US1] Create base layout template in internal/web/templates/layouts/base.html with dark theme, Pico CSS, HTMX script
-- [ ] T026 [US1] Create landing page template in internal/web/templates/pages/landing.html with login button and error/message display
-- [ ] T027 [US1] Create dashboard page template in internal/web/templates/pages/dashboard.html (placeholder for US2)
-- [ ] T028 [P] [US1] Create custom.css in internal/web/static/css/custom.css with dark theme overrides (Bluesky blue primary color)
+- [x] T025 [US1] Create base layout template in internal/web/templates/layouts/base.html with dark theme, Pico CSS, HTMX script
+- [x] T026 [US1] Create landing page template in internal/web/templates/pages/landing.html with login button and error/message display
+- [x] T027 [US1] Create dashboard page template in internal/web/templates/pages/dashboard.html (placeholder for US2)
+- [x] T028 [P] [US1] Create custom.css in internal/web/static/css/custom.css with dark theme overrides (Bluesky blue primary color)
 
 **Parallel Execution**: T028 can run while T025-T027 are being implemented
 
 ### 3.7: HTTP Handlers (US1)
 
-- [ ] T029 [US1] Implement Landing handler in internal/web/handlers/landing.go (check auth, redirect if authenticated, render landing template)
-- [ ] T030 [US1] Implement Dashboard handler in internal/web/handlers/dashboard.go (stub for US2, render dashboard template)
+- [x] T029 [US1] Implement Landing handler in internal/web/handlers/landing.go (check auth, redirect if authenticated, render landing template)
+- [x] T030 [US1] Implement Dashboard handler in internal/web/handlers/dashboard.go (stub for US2, render dashboard template)
 
 ### 3.8: Router & Main Application (US1)
 
-- [ ] T031 [US1] Implement router in internal/web/router.go (chi router with public and protected route groups)
-- [ ] T032 [US1] Implement main application in cmd/bskyarchive/main.go (load config, init DB, init sessions, init OAuth, start server, graceful shutdown)
+- [x] T031 [US1] Implement router in internal/web/router.go (chi router with public and protected route groups)
+- [x] T032 [US1] Implement main application in cmd/bskyarchive/main.go (load config, init DB, init sessions, init OAuth, start server, graceful shutdown)
 
 ---
 
