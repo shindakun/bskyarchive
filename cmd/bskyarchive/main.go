@@ -73,10 +73,12 @@ func main() {
 	// OAuth client metadata (required by bskyoauth)
 	r.Get("/client-metadata.json", oauthManager.ClientMetadataHandler())
 
+	// OAuth callback (must be at root level to match redirect_uri)
+	r.Get("/callback", h.Callback)
+
 	// Auth routes
 	r.Route("/auth", func(r chi.Router) {
 		r.HandleFunc("/login", h.Login)
-		r.Get("/callback", h.Callback)
 		r.Get("/logout", h.Logout)
 	})
 
