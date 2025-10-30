@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -50,9 +49,9 @@ func main() {
 	logger.Println("Session manager initialized")
 
 	// Initialize OAuth manager
-	baseURL := fmt.Sprintf("http://%s", cfg.GetAddr())
+	baseURL := cfg.GetBaseURL()
 	oauthManager := auth.InitOAuth(baseURL, cfg.OAuth.Scopes, sessionManager)
-	logger.Println("OAuth manager initialized")
+	logger.Printf("OAuth manager initialized with base URL: %s", baseURL)
 
 	// Initialize router
 	r := chi.NewRouter()

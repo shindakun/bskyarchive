@@ -1,6 +1,7 @@
 server:
   port: 8080
   host: "localhost"
+  # base_url: "https://your-domain.com"  # Optional: Set this for OAuth (required for non-localhost deployments)
   read_timeout: 15s
   write_timeout: 15s
   idle_timeout: 60s

@@ -21,6 +21,7 @@ type Config struct {
 type ServerConfig struct {
 	Port            int           `yaml:"port"`
 	Host            string        `yaml:"host"`
+	BaseURL         string        `yaml:"base_url"` // Optional: Override for OAuth (e.g., https://your-domain.com)
 	ReadTimeout     time.Duration `yaml:"read_timeout"`
 	WriteTimeout    time.Duration `yaml:"write_timeout"`
 	IdleTimeout     time.Duration `yaml:"idle_timeout"`
@@ -116,4 +117,13 @@ func (c *Config) Validate() error {
 // GetAddr returns the full server address (host:port)
 func (c *Config) GetAddr() string {
 	return fmt.Sprintf("%s:%d", c.Server.Host, c.Server.Port)
+}
+
+// GetBaseURL returns the base URL for OAuth
+// Uses base_url if set, otherwise constructs from host:port
+func (c *Config) GetBaseURL() string {
+	if c.Server.BaseURL != "" {
+		return c.Server.BaseURL
+	}
+	return fmt.Sprintf("http://%s", c.GetAddr())
 }

@@ -62,6 +62,7 @@ The application uses `config.yaml` for configuration. Default settings:
 server:
   port: 8080
   host: "localhost"
+  # base_url: "https://your-domain.com"  # Required for OAuth to work with Bluesky
 
 archive:
   db_path: "./data/archive.db"
@@ -73,6 +74,28 @@ oauth:
     - "transition:generic"
   session_max_age: 604800  # 7 days
 ```
+
+### Setting the Base URL
+
+**Important**: For OAuth to work with Bluesky, you need to set a publicly accessible `base_url`:
+
+```yaml
+server:
+  base_url: "https://your-domain.com"
+```
+
+**For local development with a tunnel** (e.g., ngrok, cloudflared):
+
+1. Start a tunnel: `ngrok http 8080`
+2. Copy the public URL (e.g., `https://abc123.ngrok.io`)
+3. Set it in `config.yaml`:
+   ```yaml
+   server:
+     base_url: "https://abc123.ngrok.io"
+   ```
+4. Start the application
+
+**Note**: Bluesky OAuth requires a publicly accessible URL - `localhost` won't work for the OAuth callback.
 
 You can override the config file location:
 
