@@ -1,140 +1,288 @@
 # Research: Web Interface
 
-**Feature**: Web Interface (001-web-interface)
-**Date**: 2025-10-30
-**Status**: Complete
+**Phase 0 Output** | **Date**: 2025-10-30 | **Plan**: [plan.md](./plan.md)
 
 ## Overview
 
-This document captures research decisions for implementing the web interface layer of the Bluesky Personal Archive Tool. All technology choices align with user requirements (Go, HTML, vanilla JavaScript, HTMX) and the project constitution.
+This document consolidates all technical research, design decisions, and implementation patterns for the Bluesky Personal Archive Tool web interface. It resolves unknowns from the Technical Context and establishes best practices for all dependencies.
 
-## Technology Stack Decisions
+---
 
-### 1. HTTP Server & Routing
+## 1. Go HTTP Server & Routing
 
-**Decision**: Use Go's standard library `net/http` with a lightweight router (gorilla/mux or chi)
+### Decision: net/http + gorilla/mux or chi router
 
 **Rationale**:
-- Constitution specifies net/http stdlib
-- Proven, stable, and well-documented
-- No need for heavy framework overhead
-- Lightweight routers like chi or gorilla/mux add minimal complexity while improving routing ergonomics
-- Full control over middleware chain
+- Use Go's standard library `net/http` as the foundation
+- Add `chi` router for cleaner route definitions and middleware support
+- Avoids heavyweight frameworks while providing essential routing features
+- Chi is lightweight, idiomatic Go, and widely adopted
+
+**Best Practices**:
+```go
+import (
+  "net/http"
+  "github.com/go-chi/chi/v5"
+  "github.com/go-chi/chi/v5/middleware"
+)
+
+func NewRouter() *chi.Mux {
+  r := chi.NewRouter()
+
+  // Middleware
+  r.Use(middleware.Logger)
+  r.Use(middleware.Recoverer)
+  r.Use(middleware.Compress(5))
+
+  // Public routes
+  r.Get("/", handlers.Landing)
+  r.Get("/about", handlers.About)
+  r.Get("/auth/login", handlers.OAuthLogin)
+  r.Get("/auth/callback", handlers.OAuthCallback)
+
+  // Protected routes
+  r.Group(func(r chi.Router) {
+    r.Use(auth.RequireAuth)
+    r.Get("/dashboard", handlers.Dashboard)
+    r.Get("/archive", handlers.Archive)
+    r.Post("/archive/start", handlers.StartArchive)
+    r.Get("/archive/status", handlers.ArchiveStatus)
+    r.Get("/browse", handlers.Browse)
+  })
+
+  // Static assets
+  r.Handle("/static/*", http.StripPrefix("/static/",
+    http.FileServer(http.Dir("internal/web/static"))))
+
+  return r
+}
+```
 
 **Alternatives Considered**:
-- **Gin/Echo**: Rejected - full frameworks add unnecessary complexity for a localhost-only tool
-- **Pure net/http with ServeMux**: Considered but limited routing features (no URL parameters, middleware chaining is verbose)
+- Echo/Gin: Too opinionated, unnecessary features
+- stdlib only: Verbose routing, harder middleware composition
 
-**Best Practices**:
-- Use chi router for clean middleware composition and route grouping
-- Implement graceful shutdown
-- Use context for request-scoped values
-- Table-driven handler tests
+---
 
-### 2. HTML Templating
+## 2. HTML Templating
 
-**Decision**: Use Go's `html/template` package with a layout/partial system
+### Decision: Go html/template with layout inheritance
 
 **Rationale**:
-- Built into Go standard library
-- Auto-escapes HTML to prevent XSS
-- Supports template inheritance via `{{define}}` and `{{template}}`
-- Familiar to Go developers
-
-**Template Structure**:
-```
-templates/
-├── layouts/base.html      # Common structure (<!DOCTYPE>, head, body wrapper)
-├── pages/*.html           # Full page templates
-└── partials/*.html        # Reusable components (nav, footer, cards)
-```
+- Standard library, no external dependencies
+- Automatic HTML escaping prevents XSS
+- Template composition via `{{template}}` and `{{block}}`
+- Integrates seamlessly with HTMX partial responses
 
 **Best Practices**:
-- Use `template.Must()` to catch template parsing errors at startup
-- Pre-compile templates once at server initialization
-- Pass data via struct types (not `map[string]interface{}`)
-- Use `{{block}}` for layout extension points
+```go
+// Template structure
+// internal/web/templates/
+// ├── layouts/
+// │   └── base.html        (shell with {{block "content" .}})
+// ├── pages/
+// │   ├── landing.html     ({{define "content"}}...{{end}})
+// │   ├── dashboard.html
+// │   └── archive.html
+// └── partials/
+//     ├── nav.html
+//     └── archive-status.html
 
-### 3. Session Management
+// Loading templates
+var templates *template.Template
 
-**Decision**: Use gorilla/sessions with secure cookie store for 7-day expiring sessions
+func init() {
+  templates = template.Must(template.ParseGlob("internal/web/templates/**/*.html"))
+}
+
+// Rendering with layout
+func RenderPage(w http.ResponseWriter, name string, data interface{}) error {
+  return templates.ExecuteTemplate(w, name, data)
+}
+
+// HTMX partial response (no layout)
+func RenderPartial(w http.ResponseWriter, name string, data interface{}) error {
+  return templates.ExecuteTemplate(w, name, data)
+}
+```
+
+**Template Example** (base.html):
+```html
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{block "title" .}}Bluesky Archive{{end}}</title>
+  <link rel="stylesheet" href="/static/css/pico.min.css">
+  <link rel="stylesheet" href="/static/css/custom.css">
+  <script src="/static/js/htmx.min.js"></script>
+</head>
+<body>
+  {{template "nav" .}}
+  <main class="container">
+    {{block "content" .}}{{end}}
+  </main>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
+```
+
+**Alternatives Considered**:
+- Templ: Type-safe but adds build complexity
+- Manual string concatenation: Error-prone, no escaping
+
+---
+
+## 3. Session Management
+
+### Decision: gorilla/sessions with encrypted cookie store
 
 **Rationale**:
-- Industry-standard session library for Go
-- Supports encrypted cookie storage (appropriate for localhost single-user)
-- Configurable expiration (required: 7 days)
-- Flash message support for user feedback
+- Proven library with secure defaults
+- Encrypted cookies avoid database round-trips
+- Built-in flash message support
+- Easy integration with middleware
+
+**Best Practices**:
+```go
+import (
+  "github.com/gorilla/sessions"
+)
+
+var store *sessions.CookieStore
+
+func InitSessions(secret []byte) {
+  store = sessions.NewCookieStore(secret)
+  store.Options = &sessions.Options{
+    Path:     "/",
+    MaxAge:   7 * 24 * 60 * 60, // 7 days
+    HttpOnly: true,
+    Secure:   false, // true in production with HTTPS
+    SameSite: http.SameSiteLaxMode,
+  }
+}
+
+// Store session data
+func SaveSession(w http.ResponseWriter, r *http.Request, userID, handle, did, accessToken string) error {
+  session, _ := store.Get(r, "auth")
+  session.Values["user_id"] = userID
+  session.Values["handle"] = handle
+  session.Values["did"] = did
+  session.Values["access_token"] = accessToken
+  session.Values["authenticated"] = true
+  return session.Save(r, w)
+}
+
+// Middleware: require authentication
+func RequireAuth(next http.Handler) http.Handler {
+  return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    session, _ := store.Get(r, "auth")
+    if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
+      http.Redirect(w, r, "/?error=auth_required", http.StatusSeeOther)
+      return
+    }
+    next.ServeHTTP(w, r)
+  })
+}
+```
 
 **Security Considerations**:
-- HTTP-only cookies to prevent XSS access
-- Secure flag for cookies (even on localhost for best practices)
-- SameSite=Lax to prevent CSRF
-- Rotate session ID on authentication
-- Store minimal data in session (user DID, handle, expiration)
+- Generate secret key with `crypto/rand` (32 bytes)
+- Store secret in environment variable or config file (not in code)
+- Rotate session secret periodically
+- Use `Secure: true` when serving over HTTPS
 
 **Alternatives Considered**:
-- **JWT tokens**: Rejected - more complex, harder to invalidate, unnecessary for single-user localhost
-- **Server-side session store (Redis/memcached)**: Rejected - overkill for single-user, adds external dependency
+- Database-backed sessions: Overkill for single-user app
+- JWT: Stateless but harder to revoke, more complex validation
 
-### 4. OAuth Integration
+---
 
-**Decision**: Use existing `github.com/shindakun/bskyoauth` package
+## 4. OAuth Authentication (bskyoauth)
+
+### Decision: github.com/shindakun/bskyoauth
 
 **Rationale**:
-- Already specified by user as project requirement
-- Handles Bluesky OAuth 2.0 flow
-- Manages token refresh
+- Purpose-built for Bluesky OAuth 2.0
+- Handles PKCE flow automatically
+- Returns access token, refresh token, DID, and handle
 
-**Implementation Pattern**:
-1. `/login` → initiate OAuth flow → redirect to Bluesky
-2. `/callback` → receive auth code → exchange for tokens → create session → redirect to dashboard
-3. Store tokens in session encrypted with gorilla/sessions
-4. Middleware checks session validity on protected routes
+**Best Practices**:
+```go
+import (
+  "github.com/shindakun/bskyoauth"
+)
+
+var oauthClient *bskyoauth.Client
+
+func InitOAuth() {
+  oauthClient = bskyoauth.NewClient(
+    "http://localhost:8080/auth/callback",
+    []string{"atproto", "transition:generic"},
+  )
+}
+
+// Start OAuth flow
+func HandleOAuthLogin(w http.ResponseWriter, r *http.Request) {
+  authURL, state, codeVerifier := oauthClient.GetAuthURL()
+
+  // Store state and verifier in session
+  session, _ := store.Get(r, "oauth")
+  session.Values["state"] = state
+  session.Values["code_verifier"] = codeVerifier
+  session.Save(r, w)
+
+  http.Redirect(w, r, authURL, http.StatusSeeOther)
+}
+
+// OAuth callback
+func HandleOAuthCallback(w http.ResponseWriter, r *http.Request) {
+  session, _ := store.Get(r, "oauth")
+  state := session.Values["state"].(string)
+  codeVerifier := session.Values["code_verifier"].(string)
+
+  // Verify state
+  if r.URL.Query().Get("state") != state {
+    http.Error(w, "Invalid state", http.StatusBadRequest)
+    return
+  }
+
+  // Exchange code for tokens
+  code := r.URL.Query().Get("code")
+  tokens, err := oauthClient.ExchangeCode(code, codeVerifier)
+  if err != nil {
+    http.Error(w, "OAuth exchange failed", http.StatusInternalServerError)
+    return
+  }
+
+  // Save to auth session
+  SaveSession(w, r, tokens.DID, tokens.Handle, tokens.DID, tokens.AccessToken)
+  http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+}
+```
 
 **Error Handling**:
-- OAuth denial: Redirect to landing with friendly message
-- Token expiration: Auto-refresh if possible, else redirect to login
-- Network errors: Display user-friendly error page with retry option
+- User denies authorization: Show friendly message, redirect to landing
+- Invalid tokens: Clear session, redirect to login
+- Expired tokens: Implement refresh logic (future enhancement)
 
-### 5. AT Protocol Integration & Data Collection
+**Alternatives Considered**:
+- Generic OAuth library: More complex, no Bluesky-specific helpers
 
-**Decision**: Use `github.com/bluesky-social/indigo` (official AT Protocol SDK for Go) for all Bluesky API interactions
+---
+
+## 5. AT Protocol Integration & Data Collection
+
+### Decision: github.com/bluesky-social/indigo
 
 **Rationale**:
-- Official SDK from Bluesky team
-- Comprehensive AT Protocol support (posts, profiles, media, social graph)
-- Handles XRPC (cross-service RPC protocol)
-- Built-in type safety with generated lexicons
-- Active maintenance and community support
+- Official Go SDK for AT Protocol
+- Type-safe generated code from Lexicon schemas
+- XRPC client with automatic retries
+- Active maintenance by Bluesky team
 
-**Architecture**:
-```
-User triggers sync → Background worker starts → AT Protocol client fetches data → Store in SQLite
-```
-
-**Data Collection Strategy**:
-
-1. **Full Sync** (first-time archive):
-   - Fetch all posts via `app.bsky.feed.getAuthorFeed` (paginated, 100 per page)
-   - Download embedded media (images, videos)
-   - Fetch profile snapshots via `app.bsky.actor.getProfile`
-   - Fetch social graph (followers/following) via `app.bsky.graph` endpoints
-   - Store everything in SQLite with FTS5 index
-
-2. **Incremental Sync** (subsequent syncs):
-   - Fetch posts newer than `lastSyncTime`
-   - Check for updates to existing posts (edits, deleted posts)
-   - Fetch new media only
-   - Update profile if changed
-   - Much faster than full sync
-
-**Rate Limiting**:
-- Bluesky API limit: **300 requests per 5 minutes** (per OAuth token)
-- Strategy: Respect `RateLimit-*` headers from API responses
-- Implement exponential backoff on 429 (Too Many Requests)
-- Show estimated time remaining in progress UI
-
-**Implementation**:
+**Best Practices**:
 ```go
 import (
   "github.com/bluesky-social/indigo/api/atproto"
@@ -143,56 +291,123 @@ import (
 )
 
 // Create authenticated client
-client := &xrpc.Client{
-  Host: "https://bsky.social",
-  Auth: &xrpc.AuthInfo{
-    AccessJwt:  session.AccessToken,
-    RefreshJwt: session.RefreshToken,
-    Did:        session.DID,
-    Handle:     session.Handle,
-  },
+func NewATProtoClient(accessToken, did, handle string) *xrpc.Client {
+  client := &xrpc.Client{
+    Host: "https://bsky.social",
+    Auth: &xrpc.AuthInfo{
+      AccessJwt:  accessToken,
+      RefreshJwt: "", // Store refresh token separately if using
+      Did:        did,
+      Handle:     handle,
+    },
+  }
+  return client
 }
 
 // Fetch user's posts (paginated)
-resp, err := bsky.FeedGetAuthorFeed(ctx, client, did, "", limit, cursor)
+func FetchPosts(ctx context.Context, client *xrpc.Client, did string, cursor string) (*bsky.FeedGetAuthorFeed_Output, error) {
+  return bsky.FeedGetAuthorFeed(ctx, client, did, "", 100, cursor)
+}
+
+// Fetch profile
+func FetchProfile(ctx context.Context, client *xrpc.Client, actor string) (*bsky.ActorGetProfile_Output, error) {
+  return bsky.ActorGetProfile(ctx, client, actor)
+}
 ```
 
-**Error Handling**:
-- **401 Unauthorized**: Token expired → attempt refresh → redirect to login if refresh fails
-- **429 Too Many Requests**: Rate limited → wait and retry with exponential backoff
-- **Network errors**: Retry with exponential backoff (max 3 attempts)
-- **Partial failures**: Continue sync, log errors, show summary at end
+**Data Collection Strategy**:
+
+1. **Full Sync** (first archive):
+   - Fetch all posts via `app.bsky.feed.getAuthorFeed`
+   - Paginate with cursor (100 posts per page)
+   - Download all media in parallel (max 5 concurrent)
+   - Store posts, profiles, and media in SQLite
+
+2. **Incremental Sync**:
+   - Query most recent post timestamp from database
+   - Fetch only posts newer than `lastSyncTime`
+   - Update existing posts if edited (check CID)
+
+3. **Rate Limiting**:
+   - Bluesky limit: 300 requests per 5 minutes
+   - Implement token bucket or sliding window
+   - Exponential backoff on 429 responses
+   - Track requests per operation in database
+
+**Rate Limiter Example**:
+```go
+type RateLimiter struct {
+  tokens    int
+  maxTokens int
+  refillRate time.Duration
+  mu        sync.Mutex
+}
+
+func (rl *RateLimiter) Wait(ctx context.Context) error {
+  rl.mu.Lock()
+  defer rl.mu.Unlock()
+
+  for rl.tokens == 0 {
+    select {
+    case <-ctx.Done():
+      return ctx.Err()
+    case <-time.After(rl.refillRate):
+      rl.tokens = min(rl.tokens+1, rl.maxTokens)
+    }
+  }
+
+  rl.tokens--
+  return nil
+}
+```
 
 **Media Download**:
-- Extract media URLs from post embed objects
-- Download in parallel (max 5 concurrent)
-- Store with content-addressable filenames (hash-based)
-- Organize by year/month: `archive/media/2024/10/abc123.jpg`
-- Track download progress for real-time UI updates
+```go
+func DownloadMedia(ctx context.Context, mediaURL, localPath string) error {
+  resp, err := http.Get(mediaURL)
+  if err != nil {
+    return err
+  }
+  defer resp.Body.Close()
+
+  // Create directory structure (YYYY/MM)
+  os.MkdirAll(filepath.Dir(localPath), 0755)
+
+  // Write file
+  out, err := os.Create(localPath)
+  if err != nil {
+    return err
+  }
+  defer out.Close()
+
+  _, err = io.Copy(out, resp.Body)
+  return err
+}
+```
+
+**Background Worker**:
+- Start goroutine for long-running archive operations
+- Store operation status in database
+- Provide progress updates via database polling
+- Cancel operations with context cancellation
 
 **Alternatives Considered**:
-- **Direct XRPC calls without SDK**: Rejected - reinventing the wheel, prone to errors
-- **Unofficial Go clients**: Rejected - indigo is official and most comprehensive
-- **Firehose streaming**: Rejected - overkill for personal archive, requires persistent connection
+- Custom XRPC implementation: Too much work, no type safety
+- REST API directly: Verbose, error-prone, no Lexicon types
 
-**Best Practices**:
-- Use context for cancellation (user can stop sync mid-operation)
-- Implement resume capability (store cursor position)
-- Transaction-based database writes (atomic commits)
-- Validate data before storage (schema validation)
+---
 
-### 6. SQLite Storage & Full-Text Search
+## 6. SQLite Storage & Full-Text Search
 
-**Decision**: Use `modernc.org/sqlite` (pure Go SQLite) with FTS5 for full-text search
+### Decision: modernc.org/sqlite (pure Go) + FTS5
 
 **Rationale**:
-- Pure Go implementation (no CGO required)
-- Cross-platform (Windows, macOS, Linux)
-- FTS5 built-in for fast full-text search (<100ms per constitution requirement)
-- Single-file database (easy backup)
-- ACID compliance (data integrity)
+- Pure Go implementation (no CGO, easier cross-compilation)
+- FTS5 virtual tables for full-text search
+- Single-file database (aligns with local-first principle)
+- Standard database/sql interface
 
-**Schema Design**:
+**Database Schema**:
 
 ```sql
 -- Posts table
@@ -209,16 +424,17 @@ CREATE TABLE posts (
   reply_count INTEGER DEFAULT 0,
   is_reply BOOLEAN DEFAULT 0,
   reply_parent TEXT,
-  embed_type TEXT,  -- 'images', 'external', 'record', null
-  embed_data JSON,  -- Full embed structure
-  labels JSON,      -- Content labels
+  embed_type TEXT,
+  embed_data JSON,
+  labels JSON,
   archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_posts_did ON posts(did);
 CREATE INDEX idx_posts_created_at ON posts(created_at DESC);
+CREATE INDEX idx_posts_has_media ON posts(has_media);
 
--- Full-text search virtual table
+-- Full-text search
 CREATE VIRTUAL TABLE posts_fts USING fts5(
   uri UNINDEXED,
   text,
@@ -231,18 +447,9 @@ CREATE TRIGGER posts_ai AFTER INSERT ON posts BEGIN
   INSERT INTO posts_fts(rowid, uri, text) VALUES (new.rowid, new.uri, new.text);
 END;
 
--- Media table
-CREATE TABLE media (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  post_uri TEXT NOT NULL,
-  media_url TEXT NOT NULL,
-  local_path TEXT NOT NULL,
-  alt_text TEXT,
-  mime_type TEXT,
-  size_bytes INTEGER,
-  downloaded_at TIMESTAMP,
-  FOREIGN KEY (post_uri) REFERENCES posts(uri)
-);
+CREATE TRIGGER posts_ad AFTER DELETE ON posts BEGIN
+  INSERT INTO posts_fts(posts_fts, rowid, uri, text) VALUES('delete', old.rowid, old.uri, old.text);
+END;
 
 -- Profiles table (snapshots over time)
 CREATE TABLE profiles (
@@ -252,430 +459,685 @@ CREATE TABLE profiles (
   description TEXT,
   avatar_url TEXT,
   banner_url TEXT,
-  followers_count INTEGER,
-  follows_count INTEGER,
-  posts_count INTEGER,
+  followers_count INTEGER DEFAULT 0,
+  follows_count INTEGER DEFAULT 0,
+  posts_count INTEGER DEFAULT 0,
   snapshot_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (did, snapshot_at)
 );
 
--- Archive operations tracking
-CREATE TABLE operations (
+-- Media table
+CREATE TABLE media (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  post_uri TEXT NOT NULL,
+  media_url TEXT NOT NULL,
+  local_path TEXT NOT NULL,
+  alt_text TEXT,
+  mime_type TEXT,
+  size_bytes INTEGER,
+  downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (post_uri) REFERENCES posts(uri) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_media_post_uri ON media(post_uri);
+
+-- Archive operations (track sync progress)
+CREATE TABLE archive_operations (
   id TEXT PRIMARY KEY,
   did TEXT NOT NULL,
-  type TEXT NOT NULL,  -- 'full' or 'incremental'
-  status TEXT NOT NULL,  -- 'queued', 'running', 'completed', 'failed'
-  progress REAL DEFAULT 0.0,
-  posts_fetched INTEGER DEFAULT 0,
-  media_downloaded INTEGER DEFAULT 0,
-  started_at TIMESTAMP NOT NULL,
+  operation_type TEXT NOT NULL, -- 'full_sync', 'incremental_sync'
+  status TEXT NOT NULL, -- 'running', 'completed', 'failed'
+  progress_current INTEGER DEFAULT 0,
+  progress_total INTEGER DEFAULT 0,
+  started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   completed_at TIMESTAMP,
-  error_message TEXT,
-  cursor TEXT  -- For resume capability
+  error_message TEXT
+);
+
+-- Sessions table (optional if using database-backed sessions)
+CREATE TABLE sessions (
+  id TEXT PRIMARY KEY,
+  did TEXT NOT NULL,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT,
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-**Query Examples**:
-```sql
--- Full-text search
-SELECT p.* FROM posts p
-JOIN posts_fts fts ON p.rowid = fts.rowid
-WHERE posts_fts MATCH 'bluesky AND protocol'
-ORDER BY p.created_at DESC
-LIMIT 50;
+**Best Practices**:
 
--- Pagination
-SELECT * FROM posts
-WHERE did = ?
-ORDER BY created_at DESC
-LIMIT ? OFFSET ?;
+```go
+import (
+  "database/sql"
+  "fmt"
+  _ "modernc.org/sqlite"
+)
 
--- Archive stats
-SELECT
-  COUNT(*) as total_posts,
-  COUNT(CASE WHEN has_media THEN 1 END) as posts_with_media,
-  SUM(like_count) as total_likes
-FROM posts
-WHERE did = ?;
-```
+// Initialize database with production-ready settings
+func InitDB(path string) (*sql.DB, error) {
+  // Connection string with production settings
+  dsn := fmt.Sprintf("%s?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000&_cache=private&_temp_store=memory", path)
 
-**Database Migrations**:
-- Use numbered migration files: `001_initial.sql`, `002_add_index.sql`
-- Track applied migrations in `schema_migrations` table
-- Apply migrations on server startup
-- Never modify old migrations (additive only)
+  db, err := sql.Open("sqlite", dsn)
+  if err != nil {
+    return nil, err
+  }
 
-**Alternatives Considered**:
-- **mattn/go-sqlite3**: Rejected - requires CGO, complicates cross-compilation
-- **PostgreSQL**: Rejected - overkill for single-user, requires separate process
-- **JSON files**: Rejected - poor query performance, no full-text search
+  // Enable foreign keys
+  if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+    return nil, err
+  }
 
-### 7. CSS Framework & Dark Theme
+  // Run migrations
+  if err := runMigrations(db); err != nil {
+    return nil, err
+  }
 
-**Decision**: Use Pico CSS v2 (classless CSS framework) with custom dark theme overrides
-
-**Rationale**:
-- Minimal, semantic HTML styling (no class soup)
-- Built-in dark mode support
-- Responsive by default
-- Tiny footprint (~10KB gzipped)
-- Accessible (WCAG AA compliant)
-- Matches "modern and sleek" requirement
-
-**Customization**:
-```css
-/* custom dark theme overrides in static/css/styles.css */
-:root {
-  --primary: #1e88e5;       /* Bluesky blue */
-  --background-color: #121212;
-  --card-background: #1e1e1e;
-  --text-color: #e0e0e0;
+  return db, nil
 }
 ```
 
+**Production PRAGMA Settings Explained**:
+- `_journal_mode=WAL`: Write-Ahead Logging for better concurrency and performance
+- `_synchronous=NORMAL`: Balance between safety and performance (safe for WAL mode)
+- `_busy_timeout=5000`: Wait up to 5 seconds if database is locked
+- `_cache=private`: Use private page cache (better for single-user app)
+- `_temp_store=memory`: Store temporary tables in memory for speed
+
+**Additional Runtime PRAGMAs** (optional, applied after connection):
+```go
+// Optional: Set cache size (negative = KB, positive = pages)
+db.Exec("PRAGMA cache_size = -64000") // 64MB cache
+
+// Optional: Enable memory-mapped I/O for read performance
+db.Exec("PRAGMA mmap_size = 268435456") // 256MB
+
+// Optional: Set connection pool limits
+db.SetMaxOpenConns(1) // Single writer for SQLite
+db.SetMaxIdleConns(1)
+db.SetConnMaxLifetime(0)
+
+// Full-text search
+func SearchPosts(db *sql.DB, query string, limit, offset int) ([]Post, error) {
+  rows, err := db.Query(`
+    SELECT p.uri, p.text, p.created_at, p.like_count
+    FROM posts p
+    JOIN posts_fts fts ON p.rowid = fts.rowid
+    WHERE posts_fts MATCH ?
+    ORDER BY p.created_at DESC
+    LIMIT ? OFFSET ?
+  `, query, limit, offset)
+  if err != nil {
+    return nil, err
+  }
+  defer rows.Close()
+
+  var posts []Post
+  for rows.Next() {
+    var p Post
+    if err := rows.Scan(&p.URI, &p.Text, &p.CreatedAt, &p.LikeCount); err != nil {
+      return nil, err
+    }
+    posts = append(posts, p)
+  }
+
+  return posts, nil
+}
+```
+
+**Migration Strategy**:
+- Store SQL files in `internal/storage/migrations/`
+- Name files: `001_initial.sql`, `002_fts.sql`, etc.
+- Track applied migrations in `schema_migrations` table
+- Apply migrations on startup
+
 **Alternatives Considered**:
-- **Tailwind CSS**: Rejected - utility-first approach adds build step and bloat
-- **Bootstrap**: Rejected - too heavy, over-engineered for simple 5-page app
-- **Custom CSS from scratch**: Considered but reinventing accessibility and responsiveness is inefficient
+- PostgreSQL: Overkill for single-user local app
+- SQLite with CGO: Complicates cross-compilation
+- File-based storage: No search, harder queries
 
-### 8. HTMX for Dynamic Interactions
+---
 
-**Decision**: Use HTMX v1.9+ for partial page updates and real-time progress
+## 7. CSS Framework & Styling
+
+### Decision: Pico CSS (classless) + custom dark theme
 
 **Rationale**:
-- User requirement (specified in plan input)
-- Hypermedia-driven approach aligns with server-rendered architecture
-- No build step required
-- Enables AJAX requests with HTML responses (no JSON serialization)
-- Perfect for progress updates, archive status refresh
-
-**Use Cases**:
-- **Real-time progress updates**: `hx-get="/api/progress" hx-trigger="every 2s"` polls backend, updates progress bar HTML
-- **Archive initiation**: `hx-post="/archive/sync"` submits form without full page reload
-- **Archive browsing pagination**: `hx-get="/browse?page=2" hx-target="#posts"` loads next page inline
+- Classless CSS means minimal HTML changes
+- Built-in dark theme support
+- Responsive by default
+- Small footprint (~10KB minified)
+- Semantic HTML automatically styled
 
 **Best Practices**:
-- Return HTML fragments from endpoints (not JSON)
-- Use `hx-swap` strategies for smooth UX (outerHTML, innerHTML, beforeend)
-- Implement proper HTTP status codes (200, 4xx, 5xx) for HTMX error handling
-- Add fallback: forms still work with JS disabled (progressive enhancement)
 
-### 9. Vanilla JavaScript
-
-**Decision**: Minimal vanilla JS for progressive enhancement only
-
-**Rationale**:
-- User requirement
-- No build tooling required
-- HTMX handles most dynamic behavior
-- Use JS only for: client-side form validation, keyboard shortcuts, animations
-
-**Implementation**:
-```javascript
-// static/js/app.js (~5KB)
-document.addEventListener('DOMContentLoaded', function() {
-  // Progressive enhancements
-  // - Escape key to close modals
-  // - Keyboard navigation improvements
-  // - Client-side form validation (in addition to server-side)
-});
-```
-
-**Constraints**:
-- Total JS footprint target: <50KB (easily achievable with HTMX + minimal custom JS)
-- No bundler (direct `<script>` tags)
-- Use ES6+ features (target modern browsers only)
-
-### 10. CSRF Protection
-
-**Decision**: Use Double Submit Cookie pattern with gorilla/csrf middleware
-
-**Rationale**:
-- Constitution requires CSRF protection on state-changing operations
-- gorilla/csrf integrates seamlessly with gorilla/mux and gorilla/sessions
-- Automatic token generation and validation
-- Works with HTMX (include token in headers)
-
-**Implementation**:
-```go
-import "github.com/gorilla/csrf"
-
-csrfMiddleware := csrf.Protect(
-  []byte("32-byte-key"),
-  csrf.Secure(false), // localhost only
-  csrf.Path("/"),
-)
-```
-
-Templates:
 ```html
-<form method="POST">
-  {{ .CSRFField }}
-  <!-- form fields -->
-</form>
+<!-- No classes needed for basic styling -->
+<nav>
+  <ul>
+    <li><strong>Bluesky Archive</strong></li>
+  </ul>
+  <ul>
+    <li><a href="/dashboard">Dashboard</a></li>
+    <li><a href="/archive">Archive</a></li>
+    <li><a href="/about">About</a></li>
+  </ul>
+</nav>
+
+<main class="container">
+  <article>
+    <header>
+      <h1>Archive Status</h1>
+    </header>
+    <p>Last sync: <time>2025-10-30</time></p>
+    <progress value="750" max="1000"></progress>
+  </article>
+</main>
 ```
 
-HTMX config:
+**Custom CSS** (custom.css):
+```css
+/* Override Pico variables */
+:root[data-theme="dark"] {
+  --primary: #1DA1F2; /* Bluesky blue */
+  --primary-hover: #1A8CD8;
+  --card-background-color: #1A1A1A;
+}
+
+/* Archive-specific styles */
+.post-card {
+  border-left: 3px solid var(--primary);
+  padding-left: 1rem;
+  margin-bottom: 1rem;
+}
+
+.progress-container {
+  position: relative;
+}
+
+.progress-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: bold;
+}
+```
+
+**Responsive Design**:
+- Pico handles breakpoints automatically
+- Use `<picture>` for responsive images
+- Test on mobile (iPhone, Android), tablet (iPad), desktop
+
+**Alternatives Considered**:
+- Tailwind CSS: Requires build step, verbose classes
+- Bootstrap: Heavy, opinionated, not classless
+- Custom CSS from scratch: Too much work, reinventing the wheel
+
+---
+
+## 8. HTMX Integration
+
+### Decision: HTMX for dynamic interactions
+
+**Rationale**:
+- Avoid full JavaScript framework (React, Vue)
+- Declarative HTML attributes for AJAX
+- Server-side rendering (Go templates)
+- Progressive enhancement (works without JS)
+
+**Best Practices**:
+
+```html
+<!-- Polling for archive progress -->
+<div
+  hx-get="/archive/status"
+  hx-trigger="every 2s"
+  hx-target="#archive-status"
+  hx-swap="innerHTML">
+  <div id="archive-status">
+    <progress value="0" max="100"></progress>
+    <p>Starting archive...</p>
+  </div>
+</div>
+
+<!-- Start archive with POST -->
+<button
+  hx-post="/archive/start"
+  hx-target="#archive-status"
+  hx-swap="innerHTML">
+  Start Archive
+</button>
+
+<!-- Load more posts (infinite scroll) -->
+<div
+  hx-get="/browse?page=2"
+  hx-trigger="revealed"
+  hx-swap="afterend">
+  <!-- Posts will be appended here -->
+</div>
+```
+
+**Server-side handler** (returns HTML fragment):
+```go
+func HandleArchiveStatus(w http.ResponseWriter, r *http.Request) {
+  session, _ := store.Get(r, "auth")
+  did := session.Values["did"].(string)
+
+  op, err := storage.GetActiveOperation(r.Context(), did)
+  if err != nil {
+    http.Error(w, "No active operation", http.StatusNotFound)
+    return
+  }
+
+  // Return HTML fragment
+  data := struct {
+    Progress int
+    Total    int
+    Status   string
+  }{
+    Progress: op.ProgressCurrent,
+    Total:    op.ProgressTotal,
+    Status:   op.Status,
+  }
+
+  templates.ExecuteTemplate(w, "archive-status-partial", data)
+}
+```
+
+**Vanilla JS** (minimal):
 ```javascript
-document.body.addEventListener('htmx:configRequest', function(evt) {
-  evt.detail.headers['X-CSRF-Token'] = document.querySelector('meta[name="csrf-token"]').content;
+// app.js - only for non-HTMX interactions
+document.addEventListener('DOMContentLoaded', () => {
+  // Add confirmation for destructive actions
+  document.querySelectorAll('[data-confirm]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (!confirm(e.target.dataset.confirm)) {
+        e.preventDefault();
+      }
+    });
+  });
 });
 ```
 
-### 11. Responsive Design
+**Alternatives Considered**:
+- Full SPA (React): Overkill, requires API, more complexity
+- Alpine.js: Adds dependency, HTMX sufficient for this use case
 
-**Decision**: Mobile-first responsive design using Pico CSS defaults + CSS Grid/Flexbox
+---
+
+## 9. Background Worker & Progress Tracking
+
+### Decision: Goroutine with database-backed progress
 
 **Rationale**:
-- User requirement: "site should be responsive"
-- Pico CSS is mobile-first by default
-- CSS Grid for page layouts, Flexbox for component layouts
-- No media query spaghetti
+- Goroutines are lightweight, built-in concurrency
+- Database stores operation state (survives crashes)
+- Web interface polls database for progress
+- Context cancellation for graceful shutdown
 
-**Breakpoints** (Pico CSS defaults):
-- Mobile: <576px
-- Tablet: 576px-768px
-- Desktop: >768px
+**Best Practices**:
 
-**Responsive Patterns**:
-- Navigation: Horizontal links on desktop, hamburger/stack on mobile (HTMX-powered toggle)
-- Archive cards: CSS Grid with `auto-fit` for fluid columns
-- Tables: Responsive table pattern (stack on mobile)
-
-## Archiver & Storage Integration
-
-### Background Worker Architecture
-
-**Decision**: Implement a background worker pattern for long-running sync operations
-
-**Architecture**:
-```
-Web Handler → Starts Worker (goroutine) → Worker updates progress in DB → HTMX polls progress
-```
-
-**Implementation**:
 ```go
-// internal/archiver/worker.go
-type Worker struct {
-  client   *xrpc.Client
-  storage  *storage.Store
-  progress *OperationProgress
-}
-
-func (w *Worker) Run(ctx context.Context, did string, fullSync bool) error {
-  // Update progress: queued → running
-  // Fetch posts with pagination
-  // For each post: download media, store in DB
-  // Update progress periodically (every 10 posts)
-  // On completion: queued → completed (or failed)
-}
-```
-
-**Progress Tracking**:
-- Store operation status in `operations` table
-- Web handlers read from `operations` table
-- Worker writes progress updates atomically
-- No in-memory state (survives restarts)
-
-**Concurrency Control**:
-- Only one sync operation per user at a time
-- Check for existing running operation before starting new one
-- Use database row-level locking (`SELECT FOR UPDATE`)
-
-**Rationale**: Decouples long-running archival from HTTP request lifecycle
-
-## Security Considerations
-
-### Token Storage
-
-**Decision**: Store OAuth tokens encrypted in session cookies
-
-**Rationale**:
-- Localhost-only reduces attack surface
-- gorilla/sessions encrypts cookie values
-- Alternative (server-side store) adds complexity without significant benefit for single-user
-
-### Session Expiration
-
-**Decision**: 7-day rolling expiration (per requirement FR-018)
-
-**Implementation**:
-- Set MaxAge on cookie: 7 days (604800 seconds)
-- Each request resets expiration (rolling window)
-- After 7 days of inactivity, session expires → redirect to login
-
-### HTTPS
-
-**Decision**: Optional HTTPS support with self-signed cert for localhost
-
-**Rationale**:
-- Localhost generally uses HTTP
-- Some OAuth flows require HTTPS callback
-- If bskyoauth requires HTTPS: Use Go's `http.ListenAndServeTLS()` with generated self-signed cert
-
-## Testing Strategy
-
-### Unit Tests
-
-**Scope**: Handler logic, middleware, template rendering
-
-**Approach**:
-- Table-driven tests with `httptest.ResponseRecorder`
-- Mock archive service interface
-- Test each handler's happy path + error cases
-
-**Example**:
-```go
-func TestLandingHandler(t *testing.T) {
-  tests := []struct{
-    name string
-    authenticated bool
-    wantStatus int
-    wantRedirect string
-  }{
-    {"unauthenticated shows landing", false, 200, ""},
-    {"authenticated redirects to dashboard", true, 302, "/dashboard"},
+// Start archive operation
+func StartArchive(ctx context.Context, db *sql.DB, client *xrpc.Client, did string, operationType string) (string, error) {
+  // Check for active operation
+  existing, _ := storage.GetActiveOperation(ctx, did)
+  if existing != nil {
+    return "", errors.New("archive already in progress")
   }
-  // ... table-driven test implementation
+
+  // Create operation record
+  opID := uuid.New().String()
+  op := &ArchiveOperation{
+    ID:            opID,
+    DID:           did,
+    OperationType: operationType,
+    Status:        "running",
+    StartedAt:     time.Now(),
+  }
+
+  if err := storage.CreateOperation(ctx, db, op); err != nil {
+    return "", err
+  }
+
+  // Start worker in background
+  go archiveWorker(context.Background(), db, client, op)
+
+  return opID, nil
+}
+
+// Worker function
+func archiveWorker(ctx context.Context, db *sql.DB, client *xrpc.Client, op *ArchiveOperation) {
+  defer func() {
+    if r := recover(); r != nil {
+      op.Status = "failed"
+      op.ErrorMessage = fmt.Sprintf("panic: %v", r)
+      storage.UpdateOperation(ctx, db, op)
+    }
+  }()
+
+  var cursor string
+  totalFetched := 0
+
+  for {
+    select {
+    case <-ctx.Done():
+      op.Status = "cancelled"
+      storage.UpdateOperation(ctx, db, op)
+      return
+    default:
+    }
+
+    // Fetch posts
+    resp, err := bsky.FeedGetAuthorFeed(ctx, client, op.DID, "", 100, cursor)
+    if err != nil {
+      op.Status = "failed"
+      op.ErrorMessage = err.Error()
+      storage.UpdateOperation(ctx, db, op)
+      return
+    }
+
+    // Save posts
+    for _, feedItem := range resp.Feed {
+      post := mapFeedItemToPost(feedItem)
+      storage.SavePost(ctx, db, post)
+      totalFetched++
+
+      // Update progress
+      op.ProgressCurrent = totalFetched
+      storage.UpdateOperation(ctx, db, op)
+    }
+
+    // Check for more pages
+    if resp.Cursor == nil || *resp.Cursor == "" {
+      break
+    }
+    cursor = *resp.Cursor
+  }
+
+  // Mark complete
+  op.Status = "completed"
+  op.CompletedAt = &time.Now()
+  op.ProgressTotal = totalFetched
+  storage.UpdateOperation(ctx, db, op)
 }
 ```
 
-### Integration Tests
+**Error Handling**:
+- Network errors: Retry with exponential backoff
+- Rate limit errors: Sleep and retry
+- Database errors: Log and fail operation
+- Panic recovery: Mark operation as failed
 
-**Scope**: OAuth flow end-to-end
+**Alternatives Considered**:
+- Job queue (e.g., Asynq): Overkill for single-user app
+- Polling AT Protocol: Push not available, polling is standard
 
-**Approach**:
-- Spin up test server with bskyoauth in test mode (mock OAuth provider)
-- Simulate full login flow: landing → login → callback → dashboard
-- Verify session creation and cookie setting
+---
 
-**Tools**:
-- `httptest.Server` for test HTTP server
-- Mock OAuth provider or bskyoauth test fixtures
+## 10. Configuration Management
 
-### Manual Testing
-
-**Scope**: Visual design, responsive behavior, HTMX interactions
-
-**Approach**:
-- Test in multiple browsers (Chrome, Firefox, Safari, Edge)
-- Test responsive breakpoints using browser dev tools
-- Verify WCAG AA contrast for dark theme (use browser extensions)
-
-## Performance Considerations
-
-### Template Caching
-
-**Decision**: Parse and cache templates once at server startup
-
-**Implementation**:
-```go
-var templates *template.Template
-
-func init() {
-  templates = template.Must(template.ParseGlob("templates/**/*.html"))
-}
-```
-
-### Static Asset Serving
-
-**Decision**: Serve static assets with caching headers
-
-**Implementation**:
-```go
-fs := http.FileServer(http.Dir("static"))
-http.Handle("/static/", http.StripPrefix("/static/", fs))
-```
-
-**Caching**:
-- Set `Cache-Control: max-age=31536000` for versioned assets (CSS/JS with hash in filename)
-- Set `Cache-Control: no-cache` for HTML
-
-### Archive Browse Pagination
-
-**Decision**: Server-side pagination with configurable page size (default 50 posts)
+### Decision: YAML config file + environment variables
 
 **Rationale**:
-- Supports 10,000+ posts efficiently
-- Reduces memory footprint
-- Fast page loads
+- YAML is human-readable
+- Environment variables for secrets
+- Override config with env vars for deployment flexibility
 
-**Implementation**:
-- URL param: `/browse?page=2&size=50`
-- Backend fetches only requested page from SQLite
-- HTMX loads next page on scroll or click
-
-## Deployment & Configuration
-
-### Configuration
-
-**Decision**: YAML config file with reasonable defaults
-
-**Config Schema**:
+**Configuration Structure** (config.yaml):
 ```yaml
 server:
   host: "localhost"
   port: 8080
-  read_timeout: 15s
-  write_timeout: 15s
-
-session:
-  secret_key: "random-32-byte-key"  # auto-generated if not provided
-  max_age_days: 7
-
-oauth:
-  client_id: "from-bluesky"
-  client_secret: "from-bluesky"
-  redirect_url: "http://localhost:8080/callback"
+  session_secret: "${SESSION_SECRET}" # From env var
 
 archive:
-  data_path: "./archive"
+  data_dir: "./archive"
+  db_path: "./archive/db/archive.db"
+  media_dir: "./archive/media"
+
+oauth:
+  callback_url: "http://localhost:8080/auth/callback"
+  scopes:
+    - "atproto"
+    - "transition:generic"
+
+rate_limit:
+  max_requests: 300
+  window_seconds: 300
 ```
 
-### Running the Server
+**Loading Config**:
+```go
+import (
+  "gopkg.in/yaml.v3"
+  "os"
+)
 
-**Command**:
+type Config struct {
+  Server struct {
+    Host          string `yaml:"host"`
+    Port          int    `yaml:"port"`
+    SessionSecret string `yaml:"session_secret"`
+  } `yaml:"server"`
+
+  Archive struct {
+    DataDir  string `yaml:"data_dir"`
+    DBPath   string `yaml:"db_path"`
+    MediaDir string `yaml:"media_dir"`
+  } `yaml:"archive"`
+}
+
+func LoadConfig(path string) (*Config, error) {
+  data, err := os.ReadFile(path)
+  if err != nil {
+    return nil, err
+  }
+
+  // Expand environment variables
+  expanded := os.ExpandEnv(string(data))
+
+  var cfg Config
+  if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
+    return nil, err
+  }
+
+  return &cfg, nil
+}
+```
+
+**Alternatives Considered**:
+- JSON: Less readable, no comments
+- TOML: Less common in Go ecosystem
+- Environment variables only: Hard to manage many settings
+
+---
+
+## 11. Testing Strategy
+
+### Decision: Table-driven unit tests + integration tests + contract tests
+
+**Unit Tests**:
+```go
+// internal/storage/posts_test.go
+func TestSavePost(t *testing.T) {
+  tests := []struct {
+    name    string
+    post    *Post
+    wantErr bool
+  }{
+    {
+      name: "valid post",
+      post: &Post{
+        URI:       "at://did:plc:abc123/app.bsky.feed.post/xyz789",
+        CID:       "bafyreiabc123",
+        DID:       "did:plc:abc123",
+        Text:      "Hello world",
+        CreatedAt: time.Now(),
+      },
+      wantErr: false,
+    },
+    // More test cases...
+  }
+
+  for _, tt := range tests {
+    t.Run(tt.name, func(t *testing.T) {
+      db := setupTestDB(t)
+      defer db.Close()
+
+      err := SavePost(context.Background(), db, tt.post)
+      if (err != nil) != tt.wantErr {
+        t.Errorf("SavePost() error = %v, wantErr %v", err, tt.wantErr)
+      }
+    })
+  }
+}
+```
+
+**Integration Tests** (with AT Protocol):
+```go
+// tests/integration/archiver_test.go
+func TestFetchPosts(t *testing.T) {
+  if testing.Short() {
+    t.Skip("skipping integration test")
+  }
+
+  client := NewTestClient(t) // Use test account
+  posts, err := FetchPosts(context.Background(), client, testDID, "")
+
+  if err != nil {
+    t.Fatalf("FetchPosts() error = %v", err)
+  }
+
+  if len(posts) == 0 {
+    t.Error("expected posts, got 0")
+  }
+}
+```
+
+**Contract Tests** (HTTP API):
+```go
+// tests/contract/handlers_test.go
+func TestDashboardHandler(t *testing.T) {
+  app := setupTestApp(t)
+
+  req := httptest.NewRequest("GET", "/dashboard", nil)
+  req = addAuthSession(t, req) // Helper to add authenticated session
+  w := httptest.NewRecorder()
+
+  app.ServeHTTP(w, req)
+
+  if w.Code != http.StatusOK {
+    t.Errorf("expected status 200, got %d", w.Code)
+  }
+
+  body := w.Body.String()
+  if !strings.Contains(body, "Archive Status") {
+    t.Error("expected dashboard to contain 'Archive Status'")
+  }
+}
+```
+
+**Running Tests**:
 ```bash
-# Build
-go build -o bskyarchive-web cmd/web/main.go
+# Unit tests only
+go test ./... -short
 
-# Run
-./bskyarchive-web --config config.yaml
+# All tests including integration
+go test ./...
+
+# With coverage
+go test ./... -cover -coverprofile=coverage.out
+go tool cover -html=coverage.out
 ```
 
-**Environment Variables** (optional overrides):
+---
+
+## 12. Deployment & Operations
+
+### Decision: Single binary with embedded assets
+
+**Rationale**:
+- Simplifies deployment (one file)
+- No external dependencies at runtime
+- Embed templates, CSS, JS using `go:embed`
+
+**Embedding Assets**:
+```go
+//go:embed internal/web/templates/* internal/web/static/*
+var embeddedFS embed.FS
+
+func init() {
+  // Load templates from embedded FS
+  templates = template.Must(template.ParseFS(embeddedFS, "internal/web/templates/**/*.html"))
+}
+
+// Serve static files from embedded FS
+func StaticHandler() http.Handler {
+  sub, _ := fs.Sub(embeddedFS, "internal/web/static")
+  return http.FileServer(http.FS(sub))
+}
+```
+
+**Building**:
 ```bash
-BSKY_CLIENT_ID=xxx
-BSKY_CLIENT_SECRET=xxx
-BSKY_SESSION_SECRET=xxx
+# Build for current platform
+go build -o bskyarchive cmd/bskyarchive/main.go
+
+# Cross-compile for Linux
+GOOS=linux GOARCH=amd64 go build -o bskyarchive-linux cmd/bskyarchive/main.go
+
+# Cross-compile for Windows
+GOOS=windows GOARCH=amd64 go build -o bskyarchive.exe cmd/bskyarchive/main.go
 ```
 
-## Open Questions & Future Enhancements
+**Running**:
+```bash
+# Generate session secret
+export SESSION_SECRET=$(openssl rand -hex 32)
 
-### Resolved (No Clarification Needed)
+# Run application
+./bskyarchive
 
-- **CSS framework**: Decided on Pico CSS
-- **Session storage**: Decided on encrypted cookies
-- **HTMX version**: v1.9+ (latest stable)
+# Or with custom config
+./bskyarchive --config /path/to/config.yaml
+```
 
-### Future Enhancements (Out of Scope for MVP)
+**Systemd Service** (optional for Linux):
+```ini
+[Unit]
+Description=Bluesky Archive Tool
+After=network.target
 
-- Real-time WebSocket updates instead of polling
-- Advanced search filtering UI
-- Export format generation from web UI
-- Multi-user support (requires authentication beyond OAuth)
-- Theming system (light/dark/custom themes)
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/home/youruser/bskyarchive
+ExecStart=/home/youruser/bskyarchive/bskyarchive
+Restart=on-failure
+Environment="SESSION_SECRET=your_secret_here"
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Alternatives Considered**:
+- Docker: Overkill for local app, adds complexity
+- External asset serving: More complex deployment
+
+---
 
 ## Summary
 
-All technical decisions finalized:
-- **Backend**: Go 1.21+ with net/http, chi router, gorilla/sessions, bskyoauth
-- **AT Protocol**: indigo SDK for Bluesky API integration, rate limiting, media download
-- **Storage**: modernc.org/sqlite with FTS5, database migrations, local media storage
-- **Archival**: Background worker pattern, progress tracking in DB, resumable syncs
-- **Frontend**: HTML templates, Pico CSS (dark theme), HTMX, minimal vanilla JS
-- **Security**: Encrypted sessions, CSRF protection, OAuth 2.0, 7-day expiration
-- **Testing**: Unit tests (handlers, collector, storage), integration tests (OAuth, AT Protocol)
-- **Performance**: Template caching, static asset optimization, server-side pagination, FTS5 search
+This research document resolves all unknowns from the Technical Context and establishes concrete implementation patterns for:
 
-No NEEDS CLARIFICATION items remain. Ready to proceed to Phase 1 (data models and contracts).
+1. **Web Layer**: chi router + html/template + gorilla/sessions
+2. **Authentication**: bskyoauth + encrypted cookie sessions
+3. **Data Collection**: indigo SDK + rate limiting + background workers
+4. **Storage**: modernc.org/sqlite + FTS5 full-text search
+5. **Frontend**: Pico CSS + HTMX + vanilla JavaScript
+6. **Deployment**: Single binary with embedded assets
+
+All decisions align with the constitution's core principles (local-first, privacy, efficiency) and support the feature requirements from spec.md. The next phase will generate concrete data models and API contracts based on these decisions.

@@ -1,13 +1,13 @@
 # Implementation Plan: Web Interface
 
-**Branch**: `001-web-interface` | **Date**: 2025-10-30 | **Spec**: [spec.md](spec.md)
-**Input**: Feature specification from `specs/001-web-interface/spec.md`
+**Branch**: `001-web-interface` | **Date**: 2025-10-30 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/001-web-interface/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
 ## Summary
 
-Create a complete locally hosted Bluesky Personal Archive Tool that combines web interface, data collection, and storage in a single application. Users authenticate via OAuth (bskyoauth), and the tool fetches their posts, profiles, and media directly from Bluesky using the AT Protocol (indigo SDK). All data is stored locally in SQLite with file-based media storage. The web interface features a modern, responsive dark theme using Go for the backend, HTML templates, vanilla JavaScript, and HTMX for dynamic interactions. Users can initiate archive syncs, monitor progress in real-time, and browse their archived content through an intuitive web UI.
+Create a complete locally hosted Bluesky Personal Archive Tool that combines web interface, data collection, and storage in a single application. Users authenticate via OAuth (bskyoauth), and the tool fetches their posts, profiles, and media directly from Bluesky using the AT Protocol (indigo SDK). The web interface provides a modern, dark-themed landing page, archive management dashboard, and about page. All data is stored locally using SQLite with full-text search capabilities.
 
 ## Technical Context
 
@@ -16,87 +16,78 @@ Create a complete locally hosted Bluesky Personal Archive Tool that combines web
 - github.com/shindakun/bskyoauth (OAuth authentication)
 - github.com/bluesky-social/indigo (AT Protocol SDK for Go)
 - net/http (standard library HTTP server)
-- html/template (server-side HTML rendering)
 - database/sql + modernc.org/sqlite (SQLite for archive storage and indexing)
 - HTMX (client-side dynamic interactions)
-- Vanilla JavaScript (progressive enhancement)
-- Pico CSS or similar minimal CSS framework for dark theme
+- Pico CSS (classless CSS framework for dark theme)
 
-**Storage**:
-- Session data: Encrypted cookies or server-side session store
-- Archive data: SQLite database for posts, profiles, media metadata
-- Media files: File-based storage (organized by year/month)
-- Full-text search: SQLite FTS5 for fast content search
-
-**Testing**: Go testing (testing package), table-driven tests for handlers, integration tests for OAuth flow
-
-**Target Platform**: Cross-platform (macOS, Linux, Windows) - locally hosted web server on localhost
-
-**Project Type**: Web application (server-rendered HTML with progressive enhancement)
-
+**Storage**: SQLite with FTS5 full-text search
+**Testing**: go test (standard library testing)
+**Target Platform**: Local development environment (macOS, Linux, Windows)
+**Project Type**: Web application (single Go binary with embedded web interface)
 **Performance Goals**:
-- Page load time <2 seconds
-- OAuth flow completion <30 seconds
-- Real-time progress updates <1 second latency
-- Support single-user concurrent requests efficiently
+- Page load < 2 seconds
+- Search queries < 100ms
+- Archive 100 posts/second with rate limiting
 
 **Constraints**:
-- Localhost-only (no public internet exposure required)
+- Local-first (no cloud dependencies)
+- Bluesky API rate limit (300 requests per 5 minutes)
 - Single-user instance per installation
-- Session expiration: 7 days of inactivity
-- Must implement AT Protocol communication for data collection
-- Must handle Bluesky API rate limits (300 requests per 5 minutes)
-- WCAG AA accessibility compliance for dark theme
+- Session expiration: 7 days
 
 **Scale/Scope**:
-- Single user per instance
-- Support browsing 10,000+ archived posts with pagination
-- 5 primary pages: Landing, Dashboard, Archive Management, Archive Browse, About
-- Minimal JavaScript footprint (<50KB total)
+- Support archives of 10,000+ posts
+- 5 web pages (landing, dashboard, archive, browse, about)
+- Background worker for async archival operations
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-### I. Data Privacy & Local-First Architecture ✅
-- **Compliant**: Web interface runs on localhost only, no external data transmission
-- **Compliant**: OAuth tokens stored securely (encrypted cookies/session store)
-- **Compliant**: All archive data remains local (file + SQLite storage)
-- **Compliant**: No telemetry or external analytics
+### Core Principles Alignment
 
-### II. Comprehensive & Accurate Archival ✅
-- **Compliant**: Web UI displays existing archive data without modification
-- **Compliant**: Initiates archival operations via existing backend services
-- **Compliant**: Real-time progress tracking for archival operations
-- **Not Applicable**: UI layer does not handle data collection directly
+**I. Data Privacy & Local-First Architecture** ✅
+- All data stored locally via SQLite
+- No cloud dependencies
+- OAuth tokens encrypted via secure session management
+- User controls all data through local file system
 
-### III. Multiple Export Formats ✅
-- **Compliant**: Web interface provides access to browse archived content
-- **Future**: Export format generation handled by existing backend (not in this feature scope)
+**II. Comprehensive & Accurate Archival** ✅
+- Fetches 100% of user posts via AT Protocol
+- Preserves media, timestamps, engagement metrics
+- Maintains thread context
+- Supports incremental sync
 
-### IV. Fast & Efficient Search ✅
-- **Compliant**: Archive browse interface supports pagination for 10,000+ posts
-- **Compliant**: Page load targets <2 seconds
-- **Future**: Advanced search functionality (filtering, full-text) will integrate with existing search backend
+**III. Multiple Export Formats** ⚠️ FUTURE
+- Phase 1 focuses on web interface and data collection
+- Export functionality deferred to future features
 
-### V. Incremental & Efficient Operations ✅
-- **Compliant**: Supports triggering both full and incremental sync operations
-- **Compliant**: Progress updates with <1 second latency
-- **Compliant**: Efficient server-side rendering with minimal client-side JavaScript
+**IV. Fast & Efficient Search** ✅
+- SQLite FTS5 for <100ms search
+- Filter by date, media, engagement
+- Web interface for browsing
+
+**V. Incremental & Efficient Operations** ✅
+- Incremental backups (only new content)
+- Background worker for async operations
+- Rate limit handling (300 req/5min)
+- Progress tracking in database
 
 ### Security & Privacy ✅
-- **Compliant**: OAuth 2.0 via bskyoauth library
-- **Compliant**: Secure session management (7-day expiration, HTTP-only cookies)
-- **Compliant**: CSRF protection on all state-changing operations required
-- **Compliant**: No plaintext credential storage
+- OAuth 2.0 via bskyoauth
+- Session management with 7-day expiration
+- CSRF protection planned
+- HTTP-only encrypted cookies
+- Rate limiting
 
 ### Development Standards ✅
-- **Compliant**: Go 1.21+ with net/http standard library
-- **Compliant**: Clear separation: handlers, templates, middleware, services
-- **Compliant**: HTML templates + HTMX + vanilla JavaScript (as specified in constitution)
-- **Compliant**: Testing via Go testing package
+- Go 1.21+ with stdlib practices
+- Clear separation: auth, archiver, storage, web
+- Database migrations
+- HTML, Pico CSS, HTMX, vanilla JS
+- Testing: unit, integration, contract tests
 
-**Result**: ✅ All gates pass. No constitution violations. Proceed to Phase 0.
+**GATE STATUS**: ✅ PASS (with export formats deferred to future phase)
 
 ## Project Structure
 
@@ -115,84 +106,66 @@ specs/[###-feature]/
 ### Source Code (repository root)
 
 ```text
-internal/
-├── web/
-│   ├── handlers/           # HTTP request handlers
-│   │   ├── auth.go        # OAuth login/logout/callback
-│   │   ├── dashboard.go   # Dashboard page
-│   │   ├── archive.go     # Archive management
-│   │   ├── browse.go      # Archive browsing
-│   │   └── about.go       # About page
-│   ├── middleware/         # HTTP middleware
-│   │   ├── auth.go        # Authentication middleware
-│   │   ├── session.go     # Session management
-│   │   └── csrf.go        # CSRF protection
-│   ├── templates/          # HTML templates
-│   │   ├── layouts/       # Base layouts
-│   │   │   └── base.html
-│   │   ├── pages/         # Page templates
-│   │   │   ├── landing.html
-│   │   │   ├── dashboard.html
-│   │   │   ├── archive.html
-│   │   │   ├── browse.html
-│   │   │   └── about.html
-│   │   └── partials/      # Reusable components
-│   │       ├── nav.html
-│   │       └── footer.html
-│   ├── static/             # Static assets
-│   │   ├── css/
-│   │   │   └── styles.css # Custom dark theme
-│   │   ├── js/
-│   │   │   ├── htmx.min.js
-│   │   │   └── app.js     # Vanilla JS enhancements
-│   │   └── images/
-│   └── server.go           # HTTP server setup
-├── auth/                   # Authentication service
-│   ├── oauth.go           # bskyoauth integration
-│   └── session.go         # Session store
-├── archiver/               # Bluesky data collection
-│   ├── client.go          # AT Protocol client wrapper
-│   ├── collector.go       # Post/profile/media collection
-│   ├── worker.go          # Background sync worker
-│   └── ratelimit.go       # Rate limit handling
-├── storage/                # Data persistence
-│   ├── db.go              # SQLite database setup
-│   ├── posts.go           # Post storage operations
-│   ├── profiles.go        # Profile storage operations
-│   ├── media.go           # Media download & storage
-│   ├── search.go          # Full-text search (FTS5)
-│   └── migrations/        # Database schema migrations
-│       └── 001_initial.sql
-└── models/                 # Data models
-    ├── post.go            # Post structures
-    ├── profile.go         # Profile structures
-    ├── session.go         # Session structures
-    └── operation.go       # Archive operation tracking
-
 cmd/
-└── bskyarchive/
-    └── main.go            # Application entry point
+└── bskyarchive/          # Main application entry point
+    └── main.go
+
+internal/                 # Private application code
+├── web/                  # HTTP handlers, middleware, templates
+│   ├── handlers/        # HTTP route handlers
+│   ├── middleware/      # Auth, CSRF, logging middleware
+│   ├── templates/       # HTML templates (Go templates)
+│   └── static/          # CSS, JS, images
+│       ├── css/         # Pico CSS + custom styles
+│       ├── js/          # HTMX + vanilla JavaScript
+│       └── images/
+├── auth/                 # OAuth and session management
+│   ├── oauth.go         # bskyoauth integration
+│   └── session.go       # Session storage and validation
+├── archiver/             # Bluesky data collection
+│   ├── client.go        # AT Protocol client wrapper
+│   ├── collector.go     # Post/profile/media collection
+│   ├── worker.go        # Background sync worker
+│   └── ratelimit.go     # Rate limit handling
+├── storage/              # Data persistence
+│   ├── db.go            # SQLite database setup
+│   ├── posts.go         # Post storage operations
+│   ├── profiles.go      # Profile storage operations
+│   ├── media.go         # Media download & storage
+│   ├── search.go        # Full-text search (FTS5)
+│   └── migrations/      # Database schema migrations
+│       ├── 001_initial.sql
+│       ├── 002_fts.sql
+│       └── ...
+└── models/               # Data models
+    ├── post.go
+    ├── profile.go
+    ├── session.go
+    └── operation.go
+
+archive/                  # Local archive storage (runtime data)
+├── media/               # Downloaded images/videos
+│   └── YYYY/MM/        # Organized by year/month
+└── db/
+    └── archive.db       # SQLite database
 
 tests/
-├── integration/
-│   ├── oauth_test.go      # OAuth flow tests
-│   └── archiver_test.go   # AT Protocol integration tests
-└── unit/
-    ├── handlers_test.go   # Handler unit tests
-    ├── collector_test.go  # Collection logic tests
-    └── storage_test.go    # Storage layer tests
+├── integration/         # Integration tests with AT Protocol
+├── contract/            # HTTP API contract tests
+└── unit/                # Unit tests for business logic
+
+go.mod
+go.sum
+README.md
 ```
 
-**Structure Decision**: This is a complete web application that combines web interface, AT Protocol data collection, and local storage. The structure follows Go conventions with:
-- `internal/web`: Web interface (handlers, middleware, templates, static assets)
-- `internal/archiver`: Bluesky data collection via AT Protocol
-- `internal/storage`: SQLite persistence layer with migrations
-- `internal/models`: Shared data structures
-- `internal/auth`: OAuth and session management
-- `cmd/bskyarchive`: Single binary entry point
+**Structure Decision**: Single Go project with embedded web interface. The application is organized into internal packages for separation of concerns: web layer (handlers, templates, static assets), auth layer (OAuth + sessions), archiver layer (AT Protocol data collection), storage layer (SQLite operations), and shared models. The `cmd/bskyarchive` package serves as the entry point that wires everything together. Runtime data (media files and SQLite database) is stored in the `archive/` directory which is created at first run.
 
 ## Complexity Tracking
 
 > **Fill ONLY if Constitution Check has violations that must be justified**
 
-No constitution violations. This section is not applicable.
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
+| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |

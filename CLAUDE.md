@@ -3,6 +3,7 @@
 Auto-generated from all feature plans. Last updated: 2025-10-30
 
 ## Active Technologies
+- SQLite with FTS5 full-text search (001-web-interface)
 
 - Go 1.21+ (001-web-interface)
 
@@ -22,6 +23,7 @@ tests/
 Go 1.21+: Follow standard conventions
 
 ## Recent Changes
+- 001-web-interface: Added Go 1.21+
 - 001-web-interface: Added Go 1.21+
 
 - 001-web-interface: Added Go 1.21+

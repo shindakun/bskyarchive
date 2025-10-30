@@ -1,518 +1,936 @@
-# Quickstart Guide: Web Interface Development
+# Quickstart Guide: Web Interface Implementation
 
-**Feature**: Web Interface (001-web-interface)
-**Date**: 2025-10-30
-**For**: Developers implementing this feature
+**Phase 1 Output** | **Date**: 2025-10-30 | **Plan**: [plan.md](./plan.md)
 
 ## Overview
 
-This guide provides step-by-step instructions for developing the complete Bluesky Personal Archive Tool, including web interface, AT Protocol data collection, and local storage. Follow this guide to set up your development environment, understand the architecture, and implement the feature according to the plan.
+This guide provides step-by-step instructions for implementing the Bluesky Personal Archive Tool web interface. It covers environment setup, phased implementation, testing strategies, and deployment.
+
+---
 
 ## Prerequisites
 
-- **Go**: Version 1.21 or higher
+### Required Tools
+
+- **Go 1.21+**: [Download](https://go.dev/dl/)
 - **Git**: For version control
-- **Code Editor**: VS Code, GoLand, or your preferred editor
-- **Browser**: Modern browser for testing (Chrome, Firefox, Safari, or Edge)
-- **Bluesky Account**: For testing OAuth flow
+- **Text Editor/IDE**: VS Code, GoLand, or similar
+- **Web Browser**: For testing (Chrome, Firefox, Safari, or Edge)
 
-## Project Structure
+### Recommended Tools
 
-```
-bskyarchive/
-├── cmd/
-│   └── web/
-│       └── main.go                # Web server entry point
-├── internal/
-│   ├── web/
-│   │   ├── handlers/              # HTTP handlers
-│   │   ├── middleware/            # Auth, session, CSRF middleware
-│   │   ├── templates/             # HTML templates
-│   │   ├── static/                # CSS, JS, images
-│   │   └── server.go              # Server setup
-│   ├── auth/
-│   │   ├── oauth.go               # bskyoauth integration
-│   │   └── session.go             # Session management
-│   └── archive/
-│       └── client.go              # Archive service client
-├── tests/
-│   ├── integration/
-│   └── unit/
-├── specs/
-│   └── 001-web-interface/
-│       ├── spec.md                # Feature specification
-│       ├── plan.md                # Implementation plan
-│       ├── research.md            # Technology research
-│       ├── data-model.md          # Data models
-│       ├── contracts/             # API contracts
-│       └── quickstart.md          # This file
-├── go.mod
-├── go.sum
-└── config.yaml                    # Configuration file
-```
+- **Air**: Hot reload during development (`go install github.com/cosmtrek/air@latest`)
+- **golangci-lint**: Code linting (`go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`)
+- **go-migrate**: Database migrations (optional, can use custom implementation)
 
-## Setup Steps
+---
 
-### 1. Install Dependencies
+## Phase 1: Project Setup & Dependencies
+
+### Initialize Go Module
 
 ```bash
-# Navigate to project root
+# From repository root
 cd /Users/steve/go/src/github.com/shindakun/bskyarchive
 
-# Install Go dependencies
-go get github.com/shindakun/bskyoauth
-go get github.com/bluesky-social/indigo
+# Initialize go.mod if not already done
+go mod init github.com/shindakun/bskyarchive
+
+# Tidy dependencies
+go mod tidy
+```
+
+### Install Dependencies
+
+```bash
+# Web framework and routing
 go get github.com/go-chi/chi/v5
+
+# Session management
 go get github.com/gorilla/sessions
+
+# CSRF protection
 go get github.com/gorilla/csrf
+
+# OAuth authentication
+go get github.com/shindakun/bskyoauth
+
+# AT Protocol SDK
+go get github.com/bluesky-social/indigo
+
+# SQLite (pure Go)
 go get modernc.org/sqlite
 
-# Download HTMX and Pico CSS (place in internal/web/static/)
-# HTMX: https://unpkg.com/htmx.org@1.9.10/dist/htmx.min.js
-# Pico CSS: https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css
+# YAML configuration
+go get gopkg.in/yaml.v3
+
+# UUID generation
+go get github.com/google/uuid
 ```
 
-### 2. Create Configuration File
+### Directory Structure
 
-Create `config.yaml` in project root:
-
-```yaml
-server:
-  host: "localhost"
-  port: 8080
-  read_timeout: 15s
-  write_timeout: 15s
-  shutdown_timeout: 30s
-
-session:
-  secret_key: ""  # Auto-generated if empty
-  max_age_days: 7
-  cookie_name: "bsky_session"
-
-oauth:
-  client_id: "YOUR_BLUESKY_CLIENT_ID"
-  client_secret: "YOUR_BLUESKY_CLIENT_SECRET"
-  redirect_url: "http://localhost:8080/auth/callback"
-  scopes:
-    - "atproto"
-
-archive:
-  data_path: "./archive"
-  sqlite_path: "./archive/index.db"
-
-logging:
-  level: "info"  # debug, info, warn, error
-  format: "json"  # json or text
-```
-
-### 3. Set Up Directory Structure
+Create the directory structure as defined in [plan.md](./plan.md):
 
 ```bash
-# Create directories
-mkdir -p cmd/web
-mkdir -p internal/web/{handlers,middleware,templates/{layouts,pages,partials},static/{css,js,images}}
+# Create main application directories
+mkdir -p cmd/bskyarchive
+mkdir -p internal/web/{handlers,middleware,templates,static}
+mkdir -p internal/web/templates/{layouts,pages,partials}
+mkdir -p internal/web/static/{css,js,images}
 mkdir -p internal/auth
-mkdir -p internal/archive
-mkdir -p tests/{unit,integration}
+mkdir -p internal/archiver
+mkdir -p internal/storage/migrations
+mkdir -p internal/models
 
-# Create empty files to start with
-touch cmd/web/main.go
-touch internal/web/server.go
-touch internal/auth/oauth.go
-touch internal/auth/session.go
-touch internal/archive/client.go
+# Create test directories
+mkdir -p tests/{integration,contract,unit}
+
+# Create runtime data directories (will be created automatically, but good for dev)
+mkdir -p archive/{media,db}
 ```
 
-### 4. Download Static Assets
+### Download Static Assets
 
 ```bash
+# Download Pico CSS
+curl -o internal/web/static/css/pico.min.css \
+  https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css
+
 # Download HTMX
 curl -o internal/web/static/js/htmx.min.js \
   https://unpkg.com/htmx.org@1.9.10/dist/htmx.min.js
-
-# Download Pico CSS
-curl -o internal/web/static/css/pico.min.css \
-  https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css
-
-# Create custom styles file
-touch internal/web/static/css/styles.css
-touch internal/web/static/js/app.js
 ```
 
-## Implementation Order
+---
 
-Follow this order to build the feature incrementally:
+## Phase 2: Core Implementation
 
-### Phase 1: Foundation (User Story 1 - P1)
+### Step 1: Configuration Management
 
-**Goal**: Get basic server running with landing page and OAuth flow
-
-1. **Set up HTTP server** (`cmd/web/main.go`, `internal/web/server.go`)
-   - Load configuration
-   - Initialize chi router
-   - Set up middleware stack
-   - Graceful shutdown
-
-2. **Create base template** (`internal/web/templates/layouts/base.html`)
-   - HTML5 boilerplate
-   - Link to Pico CSS and custom styles
-   - Include HTMX script
-   - CSRF meta tag
-
-3. **Implement session management** (`internal/auth/session.go`)
-   - Configure gorilla/sessions with encryption
-   - Session creation/destruction helpers
-   - 7-day expiration logic
-
-4. **Implement OAuth flow** (`internal/auth/oauth.go`)
-   - Initialize bskyoauth client
-   - Login handler (initiate OAuth)
-   - Callback handler (exchange code for tokens)
-   - Store tokens in session
-
-5. **Create landing page** (`internal/web/handlers/landing.go`, `internal/web/templates/pages/landing.html`)
-   - Display project description
-   - Login button (POST to /auth/login)
-   - Show error messages if OAuth fails
-   - Redirect to dashboard if already authenticated
-
-6. **Implement authentication middleware** (`internal/web/middleware/auth.go`)
-   - Check session validity
-   - Redirect to landing if unauthorized
-   - Extend session expiration on each request (rolling window)
-
-**Checkpoint**: You should be able to:
-- Visit http://localhost:8080
-- See the landing page
-- Click login and complete OAuth flow
-- Be redirected to /dashboard (stub page for now)
-- See session cookie in browser dev tools
-
-### Phase 2: Archive Management (User Story 2 - P2)
-
-**Goal**: Display archive status and allow users to initiate syncs
-
-1. **Implement archiver and storage** (`internal/archiver/`, `internal/storage/`)
-   - Create AT Protocol client wrapper
-   - Implement post/profile/media collector
-   - Implement SQLite storage layer with migrations
-   - Create background worker for sync operations
-
-2. **Create dashboard page** (`internal/web/handlers/dashboard.go`, `internal/web/templates/pages/dashboard.html`)
-   - Fetch archive status from backend
-   - Display stats (total posts, media, last sync)
-   - Show 5 most recent posts
-   - Show active operation progress (if any)
-
-3. **Create archive management page** (`internal/web/handlers/archive.go`, `internal/web/templates/pages/archive.html`)
-   - Display detailed archive status
-   - Form to initiate sync (full or incremental)
-   - Show progress bar if sync is running
-   - Disable form while sync is in progress
-
-4. **Implement sync initiation endpoint** (`internal/web/handlers/archive.go` - POST /api/archive/sync)
-   - Validate CSRF token
-   - Parse sync type (full/incremental)
-   - Call archive service to start sync
-   - Return HTML fragment with progress indicator
-
-5. **Implement progress polling endpoint** (`internal/web/handlers/archive.go` - GET /api/progress/:id)
-   - Fetch operation status from archive service
-   - Return HTML fragment with progress bar
-   - Update status (queued, running, completed, failed)
-   - Use HTMX polling (`hx-trigger="every 2s"`)
-
-6. **Create archive browse page** (`internal/web/handlers/browse.go`, `internal/web/templates/pages/browse.html`)
-   - Fetch paginated posts from archive service
-   - Display posts in cards (text, metadata, engagement stats)
-   - Implement pagination (previous/next links)
-   - Use HTMX for infinite scroll or click-to-load-more
-
-**Checkpoint**: You should be able to:
-- Log in and see dashboard with archive stats
-- Navigate to archive management page
-- Initiate a sync operation (full or incremental)
-- See real-time progress updates
-- Browse archived posts with pagination
-
-### Phase 3: About Page (User Story 3 - P3)
-
-**Goal**: Add informational about page
-
-1. **Create about page** (`internal/web/handlers/about.go`, `internal/web/templates/pages/about.html`)
-   - Project description
-   - Version number
-   - Link to GitHub repository (opens in new tab)
-   - Link to author's Bluesky profile (opens in new tab)
-   - Consistent styling with other pages
-
-**Checkpoint**: You should be able to:
-- Navigate to /about
-- See project information
-- Click links to GitHub and Bluesky (open in new tabs)
-
-### Phase 4: Styling & Polish
-
-**Goal**: Apply dark theme and responsive design
-
-1. **Create custom dark theme** (`internal/web/static/css/styles.css`)
-   - Override Pico CSS variables for dark theme
-   - Define color palette (Bluesky blue accent)
-   - Ensure WCAG AA contrast compliance
-   - Add custom styles for post cards, progress bars, etc.
-
-2. **Add progressive enhancements** (`internal/web/static/js/app.js`)
-   - Client-side form validation
-   - Keyboard shortcuts (Escape to close modals)
-   - Smooth scroll behavior
-   - HTMX error handling
-
-3. **Test responsive design**
-   - Test all pages at mobile, tablet, and desktop breakpoints
-   - Adjust navigation for mobile (stack or hamburger)
-   - Ensure post cards reflow properly
-   - Test on actual devices or browser dev tools
-
-4. **Add navigation partial** (`internal/web/templates/partials/nav.html`)
-   - Links to Dashboard, Archive, Browse, About
-   - Show user's display name
-   - Logout button
-   - Responsive menu
-
-**Checkpoint**: You should be able to:
-- See consistent dark theme across all pages
-- Use the app on mobile, tablet, and desktop
-- Navigate between pages easily
-- Log out successfully
-
-### Phase 5: Error Handling & Edge Cases
-
-**Goal**: Handle errors gracefully
-
-1. **Implement error pages** (404, 500)
-   - Create error templates
-   - User-friendly error messages
-   - Link back to safe pages
-
-2. **Handle OAuth errors**
-   - User denies authorization
-   - Token exchange fails
-   - Network errors during OAuth
-
-3. **Handle archive operation errors**
-   - Operation fails mid-sync
-   - Network interruption
-   - Display error messages with retry option
-
-4. **Handle session expiration**
-   - Detect expired sessions
-   - Redirect to landing with message
-   - Clear expired session cookie
-
-**Checkpoint**: All edge cases handled gracefully.
-
-### Phase 6: Testing
-
-**Goal**: Ensure feature works correctly
-
-1. **Write unit tests** (`tests/unit/`)
-   - Test each handler with table-driven tests
-   - Mock archive service
-   - Test middleware (auth, session, CSRF)
-
-2. **Write integration tests** (`tests/integration/`)
-   - Test full OAuth flow
-   - Test sync initiation and progress polling
-   - Test session expiration
-
-3. **Manual testing**
-   - Test in multiple browsers
-   - Test responsive behavior
-   - Test accessibility with screen reader
-   - Verify WCAG AA contrast
-
-**Checkpoint**: All tests pass, feature fully functional.
-
-## Development Tips
-
-### Running the Server
-
-```bash
-# Run with default config
-go run cmd/web/main.go
-
-# Run with custom config
-go run cmd/web/main.go --config custom-config.yaml
-
-# Run with environment variable overrides
-BSKY_CLIENT_ID=xxx BSKY_CLIENT_SECRET=yyy go run cmd/web/main.go
-```
-
-### Hot Reloading (Optional)
-
-Use `air` for live reloading during development:
-
-```bash
-# Install air
-go install github.com/cosmtrek/air@latest
-
-# Create .air.toml config
-air init
-
-# Run with air
-air
-```
-
-### Template Development
-
-Templates are parsed once at startup. To reload templates without restarting:
+Create `internal/config/config.go`:
 
 ```go
-// In development mode, re-parse templates on each request
-if os.Getenv("ENV") == "development" {
-    templates = template.Must(template.ParseGlob("internal/web/templates/**/*.html"))
+package config
+
+import (
+    "os"
+    "gopkg.in/yaml.v3"
+)
+
+type Config struct {
+    Server struct {
+        Host          string `yaml:"host"`
+        Port          int    `yaml:"port"`
+        SessionSecret string `yaml:"session_secret"`
+    } `yaml:"server"`
+
+    Archive struct {
+        DataDir  string `yaml:"data_dir"`
+        DBPath   string `yaml:"db_path"`
+        MediaDir string `yaml:"media_dir"`
+    } `yaml:"archive"`
+
+    OAuth struct {
+        CallbackURL string   `yaml:"callback_url"`
+        Scopes      []string `yaml:"scopes"`
+    } `yaml:"oauth"`
+}
+
+func LoadConfig(path string) (*Config, error) {
+    data, err := os.ReadFile(path)
+    if err != nil {
+        return nil, err
+    }
+
+    // Expand environment variables
+    expanded := os.ExpandEnv(string(data))
+
+    var cfg Config
+    if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
+        return nil, err
+    }
+
+    return &cfg, nil
 }
 ```
 
-### Testing OAuth Locally
+Create `config.yaml`:
 
-If bskyoauth requires HTTPS for callbacks:
+```yaml
+server:
+  host: "localhost"
+  port: 8080
+  session_secret: "${SESSION_SECRET}"
 
-```bash
-# Generate self-signed cert
-openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+archive:
+  data_dir: "./archive"
+  db_path: "./archive/db/archive.db"
+  media_dir: "./archive/media"
 
-# Update config.yaml
 oauth:
-  redirect_url: "https://localhost:8080/auth/callback"
-
-# Run server with TLS
-# Update main.go to use http.ListenAndServeTLS
+  callback_url: "http://localhost:8080/auth/callback"
+  scopes:
+    - "atproto"
+    - "transition:generic"
 ```
 
-### Debugging HTMX
+### Step 2: Data Models
 
-Enable HTMX debug logging in templates:
+Create models in `internal/models/` based on [data-model.md](./data-model.md):
+
+- `post.go`: Post struct and methods
+- `profile.go`: Profile struct and methods
+- `media.go`: Media struct and methods
+- `session.go`: Session struct and methods
+- `operation.go`: ArchiveOperation struct and methods
+
+**Example** (`internal/models/post.go`):
+
+```go
+package models
+
+import (
+    "encoding/json"
+    "time"
+)
+
+type Post struct {
+    URI         string          `json:"uri" db:"uri"`
+    CID         string          `json:"cid" db:"cid"`
+    DID         string          `json:"did" db:"did"`
+    Text        string          `json:"text" db:"text"`
+    CreatedAt   time.Time       `json:"created_at" db:"created_at"`
+    IndexedAt   time.Time       `json:"indexed_at" db:"indexed_at"`
+    HasMedia    bool            `json:"has_media" db:"has_media"`
+    LikeCount   int             `json:"like_count" db:"like_count"`
+    RepostCount int             `json:"repost_count" db:"repost_count"`
+    ReplyCount  int             `json:"reply_count" db:"reply_count"`
+    IsReply     bool            `json:"is_reply" db:"is_reply"`
+    ReplyParent string          `json:"reply_parent,omitempty" db:"reply_parent"`
+    EmbedType   string          `json:"embed_type,omitempty" db:"embed_type"`
+    EmbedData   json.RawMessage `json:"embed_data,omitempty" db:"embed_data"`
+    Labels      json.RawMessage `json:"labels,omitempty" db:"labels"`
+    ArchivedAt  time.Time       `json:"archived_at" db:"archived_at"`
+}
+```
+
+### Step 3: Database Layer
+
+Create `internal/storage/db.go`:
+
+```go
+package storage
+
+import (
+    "database/sql"
+    "fmt"
+    "os"
+    "path/filepath"
+
+    _ "modernc.org/sqlite"
+)
+
+func InitDB(path string) (*sql.DB, error) {
+    // Ensure directory exists
+    if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+        return nil, err
+    }
+
+    // Connection string with production-ready settings
+    dsn := fmt.Sprintf("%s?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000&_cache=private&_temp_store=memory", path)
+
+    // Open database
+    db, err := sql.Open("sqlite", dsn)
+    if err != nil {
+        return nil, err
+    }
+
+    // Enable foreign keys
+    if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+        return nil, err
+    }
+
+    // Optional: Set cache size and memory-mapped I/O
+    db.Exec("PRAGMA cache_size = -64000")     // 64MB cache
+    db.Exec("PRAGMA mmap_size = 268435456")   // 256MB mmap
+
+    // Set connection pool limits (SQLite needs single writer)
+    db.SetMaxOpenConns(1)
+    db.SetMaxIdleConns(1)
+    db.SetConnMaxLifetime(0)
+
+    // Run migrations
+    if err := runMigrations(db); err != nil {
+        return nil, err
+    }
+
+    return db, nil
+}
+
+func runMigrations(db *sql.DB) error {
+    // TODO: Implement migration logic
+    // For now, just run all .sql files in migrations/
+    return nil
+}
+```
+
+Create migration files in `internal/storage/migrations/`:
+
+- `001_initial.sql`: Posts, profiles, media tables
+- `002_fts.sql`: Full-text search virtual tables
+- `003_operations.sql`: Archive operations table
+
+**Example** (`internal/storage/migrations/001_initial.sql`):
+
+```sql
+CREATE TABLE IF NOT EXISTS posts (
+    uri TEXT PRIMARY KEY,
+    cid TEXT NOT NULL,
+    did TEXT NOT NULL,
+    text TEXT,
+    created_at TIMESTAMP NOT NULL,
+    indexed_at TIMESTAMP NOT NULL,
+    has_media BOOLEAN DEFAULT 0,
+    like_count INTEGER DEFAULT 0,
+    repost_count INTEGER DEFAULT 0,
+    reply_count INTEGER DEFAULT 0,
+    is_reply BOOLEAN DEFAULT 0,
+    reply_parent TEXT,
+    embed_type TEXT,
+    embed_data JSON,
+    labels JSON,
+    archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_posts_did ON posts(did);
+CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_has_media ON posts(has_media);
+
+-- Add similar CREATE TABLE statements for profiles, media, operations
+```
+
+### Step 4: Session Management
+
+Create `internal/auth/session.go`:
+
+```go
+package auth
+
+import (
+    "net/http"
+    "github.com/gorilla/sessions"
+)
+
+var store *sessions.CookieStore
+
+func InitSessions(secret []byte) {
+    store = sessions.NewCookieStore(secret)
+    store.Options = &sessions.Options{
+        Path:     "/",
+        MaxAge:   7 * 24 * 60 * 60, // 7 days
+        HttpOnly: true,
+        Secure:   false, // Set to true in production with HTTPS
+        SameSite: http.SameSiteLaxMode,
+    }
+}
+
+func SaveSession(w http.ResponseWriter, r *http.Request, did, handle, accessToken string) error {
+    session, _ := store.Get(r, "auth")
+    session.Values["did"] = did
+    session.Values["handle"] = handle
+    session.Values["access_token"] = accessToken
+    session.Values["authenticated"] = true
+    return session.Save(r, w)
+}
+
+func GetSession(r *http.Request) (*Session, error) {
+    session, _ := store.Get(r, "auth")
+    if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
+        return nil, ErrNotAuthenticated
+    }
+
+    return &Session{
+        DID:         session.Values["did"].(string),
+        Handle:      session.Values["handle"].(string),
+        AccessToken: session.Values["access_token"].(string),
+    }, nil
+}
+
+type Session struct {
+    DID         string
+    Handle      string
+    AccessToken string
+}
+
+var ErrNotAuthenticated = errors.New("not authenticated")
+```
+
+### Step 5: OAuth Integration
+
+Create `internal/auth/oauth.go`:
+
+```go
+package auth
+
+import (
+    "net/http"
+    "github.com/shindakun/bskyoauth"
+)
+
+var oauthClient *bskyoauth.Client
+
+func InitOAuth(callbackURL string, scopes []string) {
+    oauthClient = bskyoauth.NewClient(callbackURL, scopes)
+}
+
+func HandleOAuthLogin(w http.ResponseWriter, r *http.Request) {
+    authURL, state, codeVerifier := oauthClient.GetAuthURL()
+
+    // Store state and verifier in temporary session
+    session, _ := store.Get(r, "oauth")
+    session.Values["state"] = state
+    session.Values["code_verifier"] = codeVerifier
+    session.Save(r, w)
+
+    http.Redirect(w, r, authURL, http.StatusSeeOther)
+}
+
+func HandleOAuthCallback(w http.ResponseWriter, r *http.Request) {
+    session, _ := store.Get(r, "oauth")
+    state := session.Values["state"].(string)
+    codeVerifier := session.Values["code_verifier"].(string)
+
+    // Verify state
+    if r.URL.Query().Get("state") != state {
+        http.Redirect(w, r, "/?error=oauth_failed", http.StatusSeeOther)
+        return
+    }
+
+    // Exchange code for tokens
+    code := r.URL.Query().Get("code")
+    tokens, err := oauthClient.ExchangeCode(code, codeVerifier)
+    if err != nil {
+        http.Redirect(w, r, "/?error=oauth_failed", http.StatusSeeOther)
+        return
+    }
+
+    // Save authenticated session
+    SaveSession(w, r, tokens.DID, tokens.Handle, tokens.AccessToken)
+    http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+}
+```
+
+### Step 6: HTTP Handlers
+
+Create handlers in `internal/web/handlers/` based on [contracts/http-api.md](./contracts/http-api.md):
+
+- `landing.go`: GET /
+- `about.go`: GET /about
+- `dashboard.go`: GET /dashboard
+- `archive.go`: GET /archive, POST /archive/start, GET /archive/status
+- `browse.go`: GET /browse
+
+**Example** (`internal/web/handlers/landing.go`):
+
+```go
+package handlers
+
+import (
+    "net/http"
+    "github.com/shindakun/bskyarchive/internal/auth"
+)
+
+func Landing(w http.ResponseWriter, r *http.Request) {
+    // If already authenticated, redirect to dashboard
+    if _, err := auth.GetSession(r); err == nil {
+        http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+        return
+    }
+
+    // Render landing page
+    data := LandingData{
+        Error:   r.URL.Query().Get("error"),
+        Message: r.URL.Query().Get("message"),
+    }
+
+    RenderTemplate(w, "landing", data)
+}
+
+type LandingData struct {
+    Error   string
+    Message string
+}
+```
+
+### Step 7: Middleware
+
+Create `internal/web/middleware/auth.go`:
+
+```go
+package middleware
+
+import (
+    "net/http"
+    "github.com/shindakun/bskyarchive/internal/auth"
+)
+
+func RequireAuth(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if _, err := auth.GetSession(r); err != nil {
+            http.Redirect(w, r, "/?error=auth_required", http.StatusSeeOther)
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
+}
+```
+
+### Step 8: Router Setup
+
+Create `internal/web/router.go`:
+
+```go
+package web
+
+import (
+    "net/http"
+    "github.com/go-chi/chi/v5"
+    "github.com/go-chi/chi/v5/middleware"
+
+    "github.com/shindakun/bskyarchive/internal/auth"
+    "github.com/shindakun/bskyarchive/internal/web/handlers"
+    mw "github.com/shindakun/bskyarchive/internal/web/middleware"
+)
+
+func NewRouter() *chi.Mux {
+    r := chi.NewRouter()
+
+    // Middleware
+    r.Use(middleware.Logger)
+    r.Use(middleware.Recoverer)
+    r.Use(middleware.Compress(5))
+
+    // Public routes
+    r.Get("/", handlers.Landing)
+    r.Get("/about", handlers.About)
+    r.Get("/auth/login", auth.HandleOAuthLogin)
+    r.Get("/auth/callback", auth.HandleOAuthCallback)
+
+    // Protected routes
+    r.Group(func(r chi.Router) {
+        r.Use(mw.RequireAuth)
+        r.Get("/dashboard", handlers.Dashboard)
+        r.Get("/archive", handlers.Archive)
+        r.Post("/archive/start", handlers.StartArchive)
+        r.Get("/archive/status", handlers.ArchiveStatus)
+        r.Get("/browse", handlers.Browse)
+        r.Get("/auth/logout", auth.HandleLogout)
+    })
+
+    // Static assets
+    r.Handle("/static/*", http.StripPrefix("/static/",
+        http.FileServer(http.Dir("internal/web/static"))))
+
+    return r
+}
+```
+
+### Step 9: Main Application
+
+Create `cmd/bskyarchive/main.go`:
+
+```go
+package main
+
+import (
+    "context"
+    "crypto/rand"
+    "encoding/hex"
+    "fmt"
+    "log"
+    "net/http"
+    "os"
+    "os/signal"
+    "time"
+
+    "github.com/shindakun/bskyarchive/internal/auth"
+    "github.com/shindakun/bskyarchive/internal/config"
+    "github.com/shindakun/bskyarchive/internal/storage"
+    "github.com/shindakun/bskyarchive/internal/web"
+)
+
+func main() {
+    // Load configuration
+    cfg, err := config.LoadConfig("config.yaml")
+    if err != nil {
+        log.Fatalf("Failed to load config: %v", err)
+    }
+
+    // Generate session secret if not set
+    if cfg.Server.SessionSecret == "" {
+        secret := make([]byte, 32)
+        rand.Read(secret)
+        cfg.Server.SessionSecret = hex.EncodeToString(secret)
+        log.Println("Generated session secret. Set SESSION_SECRET env var for production.")
+    }
+
+    // Initialize sessions
+    auth.InitSessions([]byte(cfg.Server.SessionSecret))
+
+    // Initialize OAuth
+    auth.InitOAuth(cfg.OAuth.CallbackURL, cfg.OAuth.Scopes)
+
+    // Initialize database
+    db, err := storage.InitDB(cfg.Archive.DBPath)
+    if err != nil {
+        log.Fatalf("Failed to initialize database: %v", err)
+    }
+    defer db.Close()
+
+    // Create router
+    router := web.NewRouter()
+
+    // Start server
+    addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+    srv := &http.Server{
+        Addr:         addr,
+        Handler:      router,
+        ReadTimeout:  10 * time.Second,
+        WriteTimeout: 10 * time.Second,
+        IdleTimeout:  120 * time.Second,
+    }
+
+    // Graceful shutdown
+    go func() {
+        log.Printf("Starting server on %s", addr)
+        if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+            log.Fatalf("Server failed: %v", err)
+        }
+    }()
+
+    // Wait for interrupt signal
+    quit := make(chan os.Signal, 1)
+    signal.Notify(quit, os.Interrupt)
+    <-quit
+
+    log.Println("Shutting down server...")
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    if err := srv.Shutdown(ctx); err != nil {
+        log.Fatalf("Server forced to shutdown: %v", err)
+    }
+
+    log.Println("Server exited")
+}
+```
+
+---
+
+## Phase 3: Templates & Frontend
+
+### Create Base Template
+
+Create `internal/web/templates/layouts/base.html`:
 
 ```html
-<script>
-  htmx.logAll();  // Log all HTMX events to console
-</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{block "title" .}}Bluesky Archive Tool{{end}}</title>
+  <link rel="stylesheet" href="/static/css/pico.min.css">
+  <link rel="stylesheet" href="/static/css/custom.css">
+  <script src="/static/js/htmx.min.js"></script>
+</head>
+<body>
+  {{template "nav" .}}
+  <main class="container">
+    {{block "content" .}}{{end}}
+  </main>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
 ```
 
-### Inspecting Sessions
+### Create Page Templates
 
-Use browser dev tools:
-- **Application tab** (Chrome/Edge) or **Storage tab** (Firefox)
-- Look for `bsky_session` cookie
-- Note: Cookie value is encrypted, so you'll only see ciphertext
+Create templates in `internal/web/templates/pages/`:
 
-## Common Issues & Solutions
+- `landing.html`
+- `dashboard.html`
+- `archive.html`
+- `browse.html`
+- `about.html`
 
-### Issue: OAuth redirect fails
+**Example** (`internal/web/templates/pages/landing.html`):
 
-**Solution**: Check that `redirect_url` in config matches the one registered with Bluesky OAuth.
+```html
+{{define "title"}}Welcome - Bluesky Archive{{end}}
 
-### Issue: CSRF token mismatch
+{{define "content"}}
+<article>
+  <header>
+    <h1>Bluesky Personal Archive Tool</h1>
+  </header>
+  <p>Archive your Bluesky account locally with full control over your data.</p>
 
-**Solution**: Ensure forms include `{{.CSRFToken}}` hidden field or HTMX requests include `X-CSRF-Token` header.
+  {{if .Error}}
+    <p style="color: red;">Error: {{.Error}}</p>
+  {{end}}
 
-### Issue: Session expires immediately
+  <a href="/auth/login" role="button">Login with Bluesky</a>
 
-**Solution**: Check that `session.max_age_days` is set correctly and server time is accurate.
-
-### Issue: Templates not updating
-
-**Solution**: Make sure you're re-parsing templates (see Hot Reloading section).
-
-### Issue: HTMX not working
-
-**Solution**: Check browser console for errors. Ensure `htmx.min.js` is loaded and HTMX attributes are correct.
-
-### Issue: Dark theme not applying
-
-**Solution**: Ensure `styles.css` is loaded after `pico.min.css` so overrides take effect.
-
-## Configuration Examples
-
-### Development Config
-
-```yaml
-server:
-  host: "localhost"
-  port: 8080
-
-session:
-  secret_key: "dev-secret-key-not-for-production"
-  max_age_days: 7
-
-oauth:
-  client_id: "dev-client-id"
-  client_secret: "dev-client-secret"
-  redirect_url: "http://localhost:8080/auth/callback"
-
-logging:
-  level: "debug"
-  format: "text"
+  <footer>
+    <small><a href="/about">Learn more</a></small>
+  </footer>
+</article>
+{{end}}
 ```
 
-### Production Config
+### Custom Styles
 
-```yaml
-server:
-  host: "localhost"
-  port: 8080
-  read_timeout: 30s
-  write_timeout: 30s
+Create `internal/web/static/css/custom.css`:
 
-session:
-  secret_key: ""  # Auto-generated 32-byte key
-  max_age_days: 7
+```css
+:root[data-theme="dark"] {
+  --primary: #1DA1F2;
+  --primary-hover: #1A8CD8;
+  --card-background-color: #1A1A1A;
+}
 
-oauth:
-  client_id: "${BSKY_CLIENT_ID}"
-  client_secret: "${BSKY_CLIENT_SECRET}"
-  redirect_url: "http://localhost:8080/auth/callback"
+.post-card {
+  border-left: 3px solid var(--primary);
+  padding-left: 1rem;
+  margin-bottom: 1rem;
+}
 
-logging:
-  level: "info"
-  format: "json"
+.progress-container {
+  position: relative;
+}
+
+.progress-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: bold;
+}
 ```
+
+### Minimal JavaScript
+
+Create `internal/web/static/js/app.js`:
+
+```javascript
+document.addEventListener('DOMContentLoaded', () => {
+  // Add confirmation for destructive actions
+  document.querySelectorAll('[data-confirm]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (!confirm(e.target.dataset.confirm)) {
+        e.preventDefault();
+      }
+    });
+  });
+});
+```
+
+---
+
+## Phase 4: Testing
+
+### Unit Tests
+
+Create `internal/storage/posts_test.go`:
+
+```go
+package storage_test
+
+import (
+    "context"
+    "testing"
+    "time"
+
+    "github.com/shindakun/bskyarchive/internal/models"
+    "github.com/shindakun/bskyarchive/internal/storage"
+)
+
+func TestSavePost(t *testing.T) {
+    db := setupTestDB(t)
+    defer db.Close()
+
+    post := &models.Post{
+        URI:       "at://did:plc:abc123/app.bsky.feed.post/xyz789",
+        CID:       "bafyreiabc123",
+        DID:       "did:plc:abc123",
+        Text:      "Hello world",
+        CreatedAt: time.Now(),
+        IndexedAt: time.Now(),
+    }
+
+    err := storage.SavePost(context.Background(), db, post)
+    if err != nil {
+        t.Fatalf("SavePost() error = %v", err)
+    }
+
+    // Verify post was saved
+    retrieved, err := storage.GetPost(context.Background(), db, post.URI)
+    if err != nil {
+        t.Fatalf("GetPost() error = %v", err)
+    }
+
+    if retrieved.Text != post.Text {
+        t.Errorf("expected text %q, got %q", post.Text, retrieved.Text)
+    }
+}
+
+func setupTestDB(t *testing.T) *sql.DB {
+    // Create in-memory database for testing
+    db, err := storage.InitDB(":memory:")
+    if err != nil {
+        t.Fatalf("Failed to setup test DB: %v", err)
+    }
+    return db
+}
+```
+
+### Run Tests
+
+```bash
+# Run all tests
+go test ./...
+
+# Run with coverage
+go test ./... -cover -coverprofile=coverage.out
+go tool cover -html=coverage.out
+
+# Run only short tests (skip integration tests)
+go test ./... -short
+```
+
+---
+
+## Phase 5: Running & Development
+
+### Generate Session Secret
+
+```bash
+export SESSION_SECRET=$(openssl rand -hex 32)
+```
+
+### Run Application
+
+```bash
+# Build and run
+go build -o bskyarchive cmd/bskyarchive/main.go
+./bskyarchive
+
+# Or run directly
+go run cmd/bskyarchive/main.go
+```
+
+### Hot Reload (Development)
+
+Install Air:
+
+```bash
+go install github.com/cosmtrek/air@latest
+```
+
+Create `.air.toml`:
+
+```toml
+[build]
+  cmd = "go build -o ./tmp/main cmd/bskyarchive/main.go"
+  bin = "tmp/main"
+  include_ext = ["go", "html", "css", "js"]
+  exclude_dir = ["tmp", "vendor"]
+```
+
+Run with hot reload:
+
+```bash
+air
+```
+
+---
+
+## Phase 6: Deployment
+
+### Build for Production
+
+```bash
+# Build for current platform
+go build -ldflags="-s -w" -o bskyarchive cmd/bskyarchive/main.go
+
+# Cross-compile for Linux
+GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bskyarchive-linux cmd/bskyarchive/main.go
+
+# Cross-compile for Windows
+GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bskyarchive.exe cmd/bskyarchive/main.go
+```
+
+### Environment Variables
+
+Required for production:
+
+```bash
+export SESSION_SECRET="your-32-byte-hex-secret"
+```
+
+### Run in Production
+
+```bash
+./bskyarchive
+```
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Port already in use**:
+   ```bash
+   # Change port in config.yaml or kill existing process
+   lsof -ti:8080 | xargs kill
+   ```
+
+2. **Session secret not set**:
+   ```bash
+   export SESSION_SECRET=$(openssl rand -hex 32)
+   ```
+
+3. **Database locked**:
+   - Ensure only one instance is running
+   - Delete `archive/db/archive.db-wal` and `archive/db/archive.db-shm`
+
+4. **Templates not found**:
+   - Verify template paths in handlers
+   - Ensure templates are embedded in production builds
+
+---
 
 ## Next Steps
 
-After completing this quickstart:
+After implementing the web interface:
 
-1. **Run `/speckit.tasks`** to generate detailed task list
-2. **Implement Phase 1** (Authentication & Landing)
-3. **Test Phase 1** before moving to Phase 2
-4. **Iterate** through each phase
-5. **Commit frequently** with clear commit messages
-6. **Push to both remotes** (origin and tangled)
+1. **Add Archiver Logic**: Implement AT Protocol data collection in `internal/archiver/`
+2. **Add Background Worker**: Implement async operations in `internal/archiver/worker.go`
+3. **Add Search**: Implement full-text search in `internal/storage/search.go`
+4. **Add Export**: Implement JSON/Markdown/HTML export (future feature)
+5. **Add CLI**: Create CLI commands for non-web operations (future feature)
+
+---
 
 ## Resources
 
-- **Spec**: [spec.md](spec.md)
-- **Plan**: [plan.md](plan.md)
-- **Research**: [research.md](research.md)
-- **Data Model**: [data-model.md](data-model.md)
-- **API Contracts**: [contracts/http-api.md](contracts/http-api.md)
-
-**External**:
-- [Go net/http docs](https://pkg.go.dev/net/http)
-- [chi router docs](https://go-chi.io/)
-- [HTMX docs](https://htmx.org/docs/)
-- [Pico CSS docs](https://picocss.com/)
-- [gorilla/sessions docs](https://github.com/gorilla/sessions)
-- [bskyoauth docs](https://github.com/shindakun/bskyoauth)
-
-## Summary
-
-This quickstart guide provides:
-- Project structure overview
-- Step-by-step setup instructions
-- Implementation order (3 phases aligned with user stories)
-- Development tips and common issues
-- Configuration examples
-
-Follow this guide to build the web interface feature according to the specification and plan. Good luck! 🚀
+- [Go Documentation](https://go.dev/doc/)
+- [Chi Router](https://github.com/go-chi/chi)
+- [Gorilla Sessions](https://github.com/gorilla/sessions)
+- [AT Protocol](https://atproto.com/docs)
+- [Indigo SDK](https://github.com/bluesky-social/indigo)
+- [Pico CSS](https://picocss.com/)
+- [HTMX](https://htmx.org/)
