@@ -66,6 +66,11 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
+	// Override with environment variables if set
+	if baseURL := os.Getenv("BASE_URL"); baseURL != "" {
+		cfg.Server.BaseURL = baseURL
+	}
+
 	// Validate required fields
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)

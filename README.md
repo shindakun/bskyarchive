@@ -25,17 +25,21 @@ cd bskyarchive
 
 ### 2. Set up environment variables
 
-You only need to set ONE environment variable:
-
+**Required:**
 ```bash
 # Generate a secure random session secret (must be at least 32 characters)
-export SESSION_SECRET="your-secure-random-string-at-least-32-chars-long"
-
-# Example: Generate a random secret
 export SESSION_SECRET=$(openssl rand -base64 32)
 ```
 
-**Important**: The `SESSION_SECRET` is used to encrypt session cookies. Keep it secret and don't commit it to version control.
+**Optional (for OAuth to work):**
+```bash
+# Set your public base URL (required for OAuth with Bluesky)
+export BASE_URL="https://your-domain.com"
+```
+
+**Important**:
+- The `SESSION_SECRET` is used to encrypt session cookies. Keep it secret and don't commit it to version control.
+- The `BASE_URL` overrides the config file and is required for OAuth to work with Bluesky (localhost won't work)
 
 ### 3. Build and run
 
@@ -77,8 +81,15 @@ oauth:
 
 ### Setting the Base URL
 
-**Important**: For OAuth to work with Bluesky, you need to set a publicly accessible `base_url`:
+**Important**: For OAuth to work with Bluesky, you need to set a publicly accessible `base_url`.
 
+**Option 1: Environment Variable (Recommended)**
+```bash
+export BASE_URL="https://your-domain.com"
+./bskyarchive
+```
+
+**Option 2: Config File**
 ```yaml
 server:
   base_url: "https://your-domain.com"
@@ -86,16 +97,20 @@ server:
 
 **For local development with a tunnel** (e.g., ngrok, cloudflared):
 
-1. Start a tunnel: `ngrok http 8080`
-2. Copy the public URL (e.g., `https://abc123.ngrok.io`)
-3. Set it in `config.yaml`:
-   ```yaml
-   server:
-     base_url: "https://abc123.ngrok.io"
-   ```
-4. Start the application
+```bash
+# Start ngrok tunnel
+ngrok http 8080
 
-**Note**: Bluesky OAuth requires a publicly accessible URL - `localhost` won't work for the OAuth callback.
+# In another terminal, set BASE_URL and start app
+export SESSION_SECRET=$(openssl rand -base64 32)
+export BASE_URL="https://abc123.ngrok.io"  # Use your ngrok URL
+./bskyarchive
+```
+
+**Note**:
+- Environment variable `BASE_URL` overrides the config file setting
+- Bluesky OAuth requires a publicly accessible URL - `localhost` won't work for the OAuth callback
+- The base URL is logged on startup: `OAuth manager initialized with base URL: https://...`
 
 You can override the config file location:
 
