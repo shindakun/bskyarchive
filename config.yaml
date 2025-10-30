@@ -14,9 +14,6 @@ archive:
   batch_size: 100
 
 oauth:
-  client_id: "${OAUTH_CLIENT_ID}"
-  client_secret: "${OAUTH_CLIENT_SECRET}"
-  redirect_url: "${OAUTH_REDIRECT_URL}"
   scopes:
     - "atproto"
     - "transition:generic"

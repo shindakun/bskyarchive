@@ -38,9 +38,6 @@ type ArchiveConfig struct {
 
 // OAuthConfig contains Bluesky OAuth settings
 type OAuthConfig struct {
-	ClientID      string   `yaml:"client_id"`
-	ClientSecret  string   `yaml:"client_secret"`
-	RedirectURL   string   `yaml:"redirect_url"`
 	Scopes        []string `yaml:"scopes"`
 	SessionSecret string   `yaml:"session_secret"`
 	SessionMaxAge int      `yaml:"session_max_age"`
@@ -79,20 +76,14 @@ func Load(path string) (*Config, error) {
 // Validate checks that all required configuration fields are set
 func (c *Config) Validate() error {
 	// OAuth validation
-	if c.OAuth.ClientID == "" || strings.Contains(c.OAuth.ClientID, "${") {
-		return fmt.Errorf("oauth.client_id is required (set OAUTH_CLIENT_ID environment variable)")
-	}
-	if c.OAuth.ClientSecret == "" || strings.Contains(c.OAuth.ClientSecret, "${") {
-		return fmt.Errorf("oauth.client_secret is required (set OAUTH_CLIENT_SECRET environment variable)")
-	}
-	if c.OAuth.RedirectURL == "" || strings.Contains(c.OAuth.RedirectURL, "${") {
-		return fmt.Errorf("oauth.redirect_url is required (set OAUTH_REDIRECT_URL environment variable)")
-	}
 	if c.OAuth.SessionSecret == "" || strings.Contains(c.OAuth.SessionSecret, "${") {
 		return fmt.Errorf("oauth.session_secret is required (set SESSION_SECRET environment variable)")
 	}
 	if len(c.OAuth.SessionSecret) < 32 {
 		return fmt.Errorf("oauth.session_secret must be at least 32 characters")
+	}
+	if len(c.OAuth.Scopes) == 0 {
+		return fmt.Errorf("oauth.scopes must contain at least one scope")
 	}
 
 	// Server validation
