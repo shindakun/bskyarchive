@@ -94,34 +94,34 @@ Phase 1 (Setup) → Phase 2 (Foundation) → Phase 3 (US1) → Phase 4 (US2) →
 
 ### 3.1: Data Models (US1)
 
-- [ ] T011 [P] [US1] Create Session model in internal/models/session.go with DID, Handle, AccessToken, ExpiresAt fields
-- [ ] T012 [P] [US1] Create Profile model in internal/models/profile.go for user profile snapshots
+- [x] T011 [P] [US1] Create Session model in internal/models/session.go with DID, Handle, AccessToken, ExpiresAt fields
+- [x] T012 [P] [US1] Create Profile model in internal/models/profile.go for user profile snapshots
 
 **Parallel Execution**: T011 and T012 can run concurrently (different files)
 
 ### 3.2: Database Migrations (US1)
 
-- [ ] T013 [US1] Create migration 001_initial.sql with sessions and profiles tables per data-model.md
-- [ ] T014 [US1] Implement migration runner in internal/storage/db.go (runMigrations function)
+- [x] T013 [US1] Create migration 001_initial.sql with sessions and profiles tables per data-model.md
+- [x] T014 [US1] Implement migration runner in internal/storage/db.go (runMigrations function)
 
 ### 3.3: Session Management (US1)
 
-- [ ] T015 [US1] Implement session initialization in internal/auth/session.go (InitSessions with 7-day expiration, HTTP-only cookies)
-- [ ] T016 [US1] Implement SaveSession function in internal/auth/session.go to store DID, handle, access token
-- [ ] T017 [US1] Implement GetSession function in internal/auth/session.go to retrieve session data
-- [ ] T018 [US1] Implement ClearSession function in internal/auth/session.go for logout
+- [x] T015 [US1] Implement session initialization in internal/auth/session.go (InitSessions with 7-day expiration, HTTP-only cookies)
+- [x] T016 [US1] Implement SaveSession function in internal/auth/session.go to store DID, handle, access token
+- [x] T017 [US1] Implement GetSession function in internal/auth/session.go to retrieve session data
+- [x] T018 [US1] Implement ClearSession function in internal/auth/session.go for logout
 
 ### 3.4: OAuth Integration (US1)
 
-- [ ] T019 [US1] Implement OAuth client initialization in internal/auth/oauth.go (InitOAuth with callback URL and scopes)
-- [ ] T020 [US1] Implement HandleOAuthLogin in internal/auth/oauth.go (generate auth URL, store state/verifier in session)
-- [ ] T021 [US1] Implement HandleOAuthCallback in internal/auth/oauth.go (verify state, exchange code for tokens, save session)
-- [ ] T022 [US1] Implement HandleLogout in internal/auth/oauth.go (clear session, redirect to landing)
+- [x] T019 [US1] Implement OAuth client initialization in internal/auth/oauth.go (InitOAuth with callback URL and scopes)
+- [x] T020 [US1] Implement HandleOAuthLogin in internal/auth/oauth.go (generate auth URL, store state/verifier in session)
+- [x] T021 [US1] Implement HandleOAuthCallback in internal/auth/oauth.go (verify state, exchange code for tokens, save session)
+- [x] T022 [US1] Implement HandleLogout in internal/auth/oauth.go (clear session, redirect to landing)
 
 ### 3.5: Middleware (US1)
 
-- [ ] T023 [US1] Implement RequireAuth middleware in internal/web/middleware/auth.go (check session, redirect if not authenticated)
-- [ ] T024 [P] [US1] Implement logging middleware in internal/web/middleware/logging.go (log method, path, status, duration, DID)
+- [x] T023 [US1] Implement RequireAuth middleware in internal/web/middleware/auth.go (check session, redirect if not authenticated)
+- [x] T024 [P] [US1] Implement logging middleware in internal/web/middleware/logging.go (log method, path, status, duration, DID)
 
 **Parallel Execution**: T023 and T024 can run concurrently (different files)
 

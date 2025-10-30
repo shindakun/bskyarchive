@@ -134,6 +134,21 @@ func runMigrations(db *sql.DB) error {
 			UPDATE posts_fts SET text = new.text WHERE rowid = old.rowid;
 		END`,
 
+		// Create profiles table
+		`CREATE TABLE IF NOT EXISTS profiles (
+			did TEXT NOT NULL,
+			handle TEXT NOT NULL,
+			display_name TEXT,
+			description TEXT,
+			avatar_url TEXT,
+			banner_url TEXT,
+			followers_count INTEGER DEFAULT 0,
+			follows_count INTEGER DEFAULT 0,
+			posts_count INTEGER DEFAULT 0,
+			snapshot_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (did, snapshot_at)
+		)`,
+
 		// Create media table
 		`CREATE TABLE IF NOT EXISTS media (
 			hash TEXT PRIMARY KEY,
@@ -167,6 +182,8 @@ func runMigrations(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_posts_has_media ON posts(has_media) WHERE has_media = 1`,
 		`CREATE INDEX IF NOT EXISTS idx_posts_is_reply ON posts(is_reply) WHERE is_reply = 1`,
+		`CREATE INDEX IF NOT EXISTS idx_profiles_did ON profiles(did)`,
+		`CREATE INDEX IF NOT EXISTS idx_profiles_snapshot_at ON profiles(snapshot_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_media_post_uri ON media(post_uri)`,
 		`CREATE INDEX IF NOT EXISTS idx_operations_did_status ON operations(did, status)`,
 	}

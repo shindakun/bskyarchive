@@ -32,12 +32,3 @@ func SessionMiddleware(store *SessionStore) func(next http.Handler) http.Handler
 		})
 	}
 }
-
-// RequireAuth is a middleware that requires authentication
-func RequireAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Authentication check will be implemented in Phase 3
-		// For now, redirect to login
-		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
-	})
-}
