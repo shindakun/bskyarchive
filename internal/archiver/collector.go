@@ -84,6 +84,9 @@ func convertFeedViewPostToPost(feedPost *bsky.FeedDefs_FeedViewPost) (*models.Po
 	if p.ReplyCount != nil {
 		post.ReplyCount = int(*p.ReplyCount)
 	}
+	if p.QuoteCount != nil {
+		post.QuoteCount = int(*p.QuoteCount)
+	}
 
 	// Parse record to get text and created_at
 	// Record is CBOR-encoded, marshal to JSON first
