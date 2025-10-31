@@ -1,0 +1,141 @@
+{{define "title"}}Browse Posts - Bluesky Archive{{end}}
+
+{{define "nav"}}
+<nav class="container">
+    <ul>
+        <li><strong>Bluesky Archive</strong></li>
+    </ul>
+    <ul>
+        <li><a href="/dashboard">Dashboard</a></li>
+        <li><a href="/archive">Archive</a></li>
+        <li><a href="/browse">Browse</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a href="/auth/logout">Logout</a></li>
+    </ul>
+</nav>
+{{end}}
+
+{{define "content"}}
+<section>
+    <hgroup>
+        <h1>Browse Posts</h1>
+        <h2>Search and explore your archived posts</h2>
+    </hgroup>
+
+    <!-- Search Form -->
+    <article>
+        <form method="GET" action="/browse">
+            <div class="grid">
+                <input type="search" name="q" placeholder="Search posts..." value="{{.Query}}" />
+                <button type="submit">Search</button>
+            </div>
+        </form>
+        <div style="margin-top: 1rem;">
+            {{if .ShowAll}}
+            <p><small>Showing all archived posts (including from other users) | <a href="/browse">Show only my posts</a></small></p>
+            {{else}}
+            <p><small>Showing only your posts | <a href="/browse?all=true">Show all archived posts</a></small></p>
+            {{end}}
+        </div>
+        {{if .Query}}
+        <p><small>Showing results for: <strong>{{.Query}}</strong></small></p>
+        {{end}}
+    </article>
+
+    <!-- Posts List -->
+    {{if .Posts}}
+    {{range .Posts}}
+    <article>
+        <header>
+            {{if $.ShowAll}}
+            {{$handle := index $.Profiles .DID}}
+            {{if $handle}}
+            <small><strong>@{{$handle}}</strong> • </small>
+            {{else}}
+            <small><strong>{{.DID}}</strong> • </small>
+            {{end}}
+            {{end}}
+            <small>{{.CreatedAt.Format "Jan 2, 2006 15:04"}}</small>
+            {{if .IsReply}}
+            <small> • <mark>Reply</mark></small>
+            {{end}}
+            {{if .HasMedia}}
+            <small> • 📷 Media</small>
+            {{end}}
+        </header>
+
+        {{if .IsReply}}
+        {{if .ReplyParent}}
+        {{$parentInArchive := index $.ParentPostsInArchive .ReplyParent}}
+        {{if $parentInArchive}}
+        <p><small>↩️ Replying to: <a href="/browse?q={{.ReplyParent}}">parent post (in archive)</a></small></p>
+        {{else}}
+        <p><small>↩️ Replying to: <a href="https://bsky.app/profile/{{.ReplyParent | extractDID}}/post/{{.ReplyParent | extractPostID}}" target="_blank">parent post (on Bluesky)</a></small></p>
+        {{end}}
+        {{end}}
+        {{end}}
+
+        <p>{{.Text}}</p>
+
+        {{$media := index $.Media .URI}}
+        {{if $media}}
+        <div class="grid" style="margin-top: 1rem;">
+            {{range $media}}
+            {{if isValidImage .FilePath}}
+            <a href="/media/{{.Hash}}" target="_blank" title="{{.AltText}}">
+                <img src="/media/{{.Hash}}" alt="{{.AltText}}" style="max-width: 150px; max-height: 150px; object-fit: cover; border-radius: 4px;" />
+            </a>
+            {{end}}
+            {{end}}
+        </div>
+        {{end}}
+
+        <footer>
+            <div class="grid">
+                <small>
+                    ❤️ {{.LikeCount}} • 🔁 {{.RepostCount}} • 💬 {{.ReplyCount}} • 💭 {{.QuoteCount}}
+                </small>
+                <small style="text-align: right;">
+                    <a href="https://bsky.app/profile/{{.DID}}/post/{{.URI | extractPostID}}" target="_blank">View on Bluesky</a>
+                </small>
+            </div>
+        </footer>
+    </article>
+    {{end}}
+
+    <!-- Pagination -->
+    {{if or (gt .Page 1) (lt .Page .TotalPages)}}
+    <nav>
+        <ul>
+            {{if gt .Page 1}}
+            <li>
+                <a href="?page={{.Page | dec}}{{if .Query}}&q={{.Query}}{{end}}{{if .ShowAll}}&all=true{{end}}">← Previous</a>
+            </li>
+            {{end}}
+
+            <li style="text-align: center;">
+                Page {{.Page}} of {{.TotalPages}} ({{.Total}} total)
+            </li>
+
+            {{if lt .Page .TotalPages}}
+            <li style="text-align: right;">
+                <a href="?page={{.Page | inc}}{{if .Query}}&q={{.Query}}{{end}}{{if .ShowAll}}&all=true{{end}}">Next →</a>
+            </li>
+            {{end}}
+        </ul>
+    </nav>
+    {{end}}
+
+    {{else}}
+    <article>
+        <p>
+            {{if .Query}}
+            No posts found matching your search.
+            {{else}}
+            No posts archived yet. Visit the <a href="/archive">Archive</a> page to get started.
+            {{end}}
+        </p>
+    </article>
+    {{end}}
+</section>
+{{end}}

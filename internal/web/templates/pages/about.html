@@ -1,0 +1,56 @@
+{{define "title"}}About - Bluesky Archive{{end}}
+
+{{define "nav"}}
+<nav class="container">
+    <ul>
+        <li><strong>Bluesky Archive</strong></li>
+    </ul>
+    <ul>
+        {{if .Session}}
+        <li><a href="/dashboard">Dashboard</a></li>
+        {{end}}
+        <li><a href="/">Home</a></li>
+        {{if .Session}}
+        <li><a href="/auth/logout">Logout</a></li>
+        {{end}}
+    </ul>
+</nav>
+{{end}}
+
+{{define "content"}}
+<section>
+    <hgroup>
+        <h1>About</h1>
+        <h2>Bluesky Personal Archive Tool</h2>
+        <p><small>Version {{.Version}}</small></p>
+    </hgroup>
+
+    <p>
+        A local-first archival solution for Bluesky. This tool allows you to maintain
+        a complete, searchable archive of your Bluesky content on your own machine.
+    </p>
+
+    <h3>Core Principles</h3>
+    <ul>
+        <li><strong>Data Privacy & Local-First:</strong> All data stays on your machine</li>
+        <li><strong>Comprehensive & Accurate:</strong> Complete archive of posts, media, and metadata</li>
+        <li><strong>Multiple Export Formats:</strong> JSON, CSV, and more</li>
+        <li><strong>Fast & Efficient:</strong> Full-text search with SQLite FTS5</li>
+        <li><strong>Incremental Operations:</strong> Only fetch new content on updates</li>
+    </ul>
+
+    <h3>Technology</h3>
+    <ul>
+        <li>Go 1.21+ for performance and reliability</li>
+        <li>SQLite with FTS5 for efficient storage and search</li>
+        <li>AT Protocol via the Indigo SDK</li>
+        <li>OAuth 2.0 for secure authentication</li>
+    </ul>
+
+    <h3>Links</h3>
+    <p>
+        <a href="https://github.com/shindakun" target="_blank" rel="noopener">GitHub</a> |
+        <a href="https://bsky.app/profile/shindakun.net" target="_blank" rel="noopener">Bluesky</a>
+    </p>
+</section>
+{{end}}

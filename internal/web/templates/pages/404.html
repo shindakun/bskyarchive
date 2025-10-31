@@ -1,0 +1,19 @@
+{{define "title"}}Not Found{{end}}
+
+{{define "content"}}
+<main class="container">
+    <hgroup>
+        <h1>404</h1>
+        <h2>Page Not Found</h2>
+    </hgroup>
+
+    <p>The page you're looking for doesn't exist.</p>
+
+    <p>
+        <a href="/" role="button">Return to Home</a>
+        {{if .Session}}
+        <a href="/dashboard" role="button" class="secondary">Go to Dashboard</a>
+        {{end}}
+    </p>
+</main>
+{{end}}

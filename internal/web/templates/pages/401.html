@@ -1,0 +1,17 @@
+{{define "title"}}Unauthorized{{end}}
+
+{{define "content"}}
+<main class="container">
+    <hgroup>
+        <h1>401</h1>
+        <h2>Unauthorized</h2>
+    </hgroup>
+
+    <p>You need to be logged in to access this page.</p>
+
+    <p>
+        <a href="/auth/login" role="button">Log in with Bluesky</a>
+        <a href="/" role="button" class="secondary">Return to Home</a>
+    </p>
+</main>
+{{end}}

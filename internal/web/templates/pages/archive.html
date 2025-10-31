@@ -1,0 +1,128 @@
+{{define "title"}}Archive Management - Bluesky Archive{{end}}
+
+{{define "nav"}}
+<nav class="container">
+    <ul>
+        <li><strong>Bluesky Archive</strong></li>
+    </ul>
+    <ul>
+        <li><a href="/dashboard">Dashboard</a></li>
+        <li><a href="/archive">Archive</a></li>
+        <li><a href="/browse">Browse</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a href="/auth/logout">Logout</a></li>
+    </ul>
+</nav>
+{{end}}
+
+{{define "content"}}
+<section>
+    <hgroup>
+        <h1>Archive Management</h1>
+        <h2>Manage your Bluesky archive operations</h2>
+    </hgroup>
+
+    <!-- Status Section with HTMX polling -->
+    <div id="archive-status" hx-get="/archive/status" hx-trigger="every 3s" hx-swap="innerHTML">
+        {{template "archive-status" .}}
+    </div>
+
+    <!-- Archive Actions -->
+    {{if not .HasActiveOperation}}
+    <article>
+        <header><strong>Start Archive Operation</strong></header>
+        <p>Choose an archive operation to begin:</p>
+
+        <div class="grid">
+            <div>
+                <h3>Initial Archive</h3>
+                <p>Fetch all your posts from Bluesky. This may take a while depending on how many posts you have.</p>
+                <button hx-post="/archive/start"
+                        hx-vals='{"type": "initial"}'
+                        hx-headers='{"Content-Type": "application/json"}'
+                        hx-swap="none">
+                    Start Initial Archive
+                </button>
+            </div>
+
+            {{if .Status}}
+            {{if gt .Status.TotalPosts 0}}
+            <div>
+                <h3>Incremental Update</h3>
+                <p>Fetch only new posts since your last archive.</p>
+                <button hx-post="/archive/start"
+                        hx-vals='{"type": "incremental"}'
+                        hx-headers='{"Content-Type": "application/json"}'
+                        hx-swap="none"
+                        class="secondary">
+                    Update Archive
+                </button>
+            </div>
+            {{end}}
+            {{end}}
+        </div>
+    </article>
+    {{end}}
+
+    <!-- Recent Operations -->
+    {{if .Status}}
+    {{if .Status.RecentOperations}}
+    <article>
+        <header><strong>Recent Operations</strong></header>
+        <figure>
+            <table role="grid">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Started</th>
+                        <th>Completed</th>
+                        <th>Progress</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Status.RecentOperations}}
+                    <tr>
+                        <td>{{.Type}}</td>
+                        <td>{{.Status}}</td>
+                        <td>{{.StartedAt.Format "Jan 2 15:04"}}</td>
+                        <td>
+                            {{if .CompletedAt}}
+                            {{.CompletedAt.Format "Jan 2 15:04"}}
+                            {{else}}
+                            -
+                            {{end}}
+                        </td>
+                        <td>
+                            {{if .IsComplete}}
+                            {{.ProgressCurrent}} posts
+                            {{else if gt .ProgressTotal 0}}
+                            {{.ProgressCurrent}} / {{.ProgressTotal}} ({{printf "%.0f" .ProgressPercentage}}%)
+                            {{else}}
+                            Starting...
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </figure>
+    </article>
+    {{end}}
+    {{end}}
+</section>
+
+<script>
+    // Handle archive start responses
+    document.body.addEventListener('htmx:afterRequest', function(evt) {
+        if (evt.detail.pathInfo.requestPath === '/archive/start') {
+            if (evt.detail.successful) {
+                // Reload the page to show the new operation
+                window.location.reload();
+            } else {
+                alert('Failed to start archive operation. Please try again.');
+            }
+        }
+    });
+</script>
+{{end}}
