@@ -44,22 +44,27 @@ func InitSessions(secret string, db *sql.DB) *SessionManager {
 }
 
 // SaveSession stores a new session in the database and cookie
-func (sm *SessionManager) SaveSession(w http.ResponseWriter, r *http.Request, did, handle, displayName, accessToken, refreshToken string) error {
+// accessToken parameter now stores the bskyoauth session ID
+// refreshToken parameter is ignored (kept for compatibility)
+func (sm *SessionManager) SaveSession(w http.ResponseWriter, r *http.Request, did, handle, displayName, bskyoauthSessionID, _ string) error {
 	// Create session model
 	session := &models.Session{
 		ID:           uuid.New().String(),
 		DID:          did,
 		Handle:       handle,
 		DisplayName:  displayName,
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour),
+		AccessToken:  bskyoauthSessionID, // Store bskyoauth session ID
+		RefreshToken: "",                  // Not used anymore
+		ExpiresAt:    time.Now().Add(30 * 24 * time.Hour), // 30 days like example
 		CreatedAt:    time.Now(),
 	}
 
-	// Validate session
-	if err := session.Validate(); err != nil {
-		return fmt.Errorf("session validation failed: %w", err)
+	// Validate session (skip AccessToken check since it's now a session ID)
+	if session.ID == "" {
+		return fmt.Errorf("session id is required")
+	}
+	if session.DID == "" {
+		return fmt.Errorf("did is required")
 	}
 
 	// Save to database
@@ -79,7 +84,7 @@ func (sm *SessionManager) SaveSession(w http.ResponseWriter, r *http.Request, di
 		session.DID,
 		session.Handle,
 		session.DisplayName,
-		session.AccessToken,
+		session.AccessToken, // bskyoauth session ID
 		session.RefreshToken,
 		session.ExpiresAt,
 		session.CreatedAt,
@@ -193,4 +198,32 @@ func GetSessionFromContext(ctx context.Context) (*models.Session, bool) {
 // SetSessionInContext stores session in request context
 func SetSessionInContext(ctx context.Context, session *models.Session) context.Context {
 	return context.WithValue(ctx, "session", session)
+}
+
+// UpdateAccessToken updates the access and refresh tokens for a session
+func (sm *SessionManager) UpdateAccessToken(did, accessToken, refreshToken string) error {
+	query := `
+		UPDATE sessions
+		SET access_token = ?, refresh_token = ?, expires_at = ?
+		WHERE did = ?
+	`
+
+	// Extend expiration by 7 days when refreshing token
+	newExpiry := time.Now().Add(7 * 24 * time.Hour)
+
+	result, err := sm.db.Exec(query, accessToken, refreshToken, newExpiry, did)
+	if err != nil {
+		return fmt.Errorf("failed to update session tokens: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("no session found for DID: %s", did)
+	}
+
+	return nil
 }

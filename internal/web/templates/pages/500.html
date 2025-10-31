@@ -1,0 +1,26 @@
+{{define "title"}}Internal Server Error{{end}}
+
+{{define "content"}}
+<main class="container">
+    <hgroup>
+        <h1>500</h1>
+        <h2>Internal Server Error</h2>
+    </hgroup>
+
+    <p>Something went wrong on our end. Please try again later.</p>
+
+    {{if .Error}}
+    <details>
+        <summary>Error Details</summary>
+        <pre><code>{{.Error}}</code></pre>
+    </details>
+    {{end}}
+
+    <p>
+        <a href="/" role="button">Return to Home</a>
+        {{if .Session}}
+        <a href="/dashboard" role="button" class="secondary">Go to Dashboard</a>
+        {{end}}
+    </p>
+</main>
+{{end}}

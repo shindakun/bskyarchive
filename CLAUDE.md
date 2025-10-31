@@ -24,9 +24,8 @@ Go 1.21+: Follow standard conventions
 
 ## Recent Changes
 - 001-web-interface: Added Go 1.21+
-- 001-web-interface: Added Go 1.21+
-
-- 001-web-interface: Added Go 1.21+
 
 <!-- MANUAL ADDITIONS START -->
+Kill Go process when finished with work.
+Do not kill ngrok processes!
 <!-- MANUAL ADDITIONS END -->

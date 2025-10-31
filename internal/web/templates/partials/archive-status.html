@@ -1,0 +1,52 @@
+{{define "archive-status"}}
+{{if .Status}}
+<article>
+    <header><strong>Archive Status</strong></header>
+
+    {{if .Status.ActiveOperation}}
+    <div>
+        <p><strong>Operation in Progress</strong></p>
+        <p>Type: {{.Status.ActiveOperation.Type}}</p>
+        <p>Status: <mark>{{.Status.ActiveOperation.Status}}</mark></p>
+
+        {{if gt .Status.ActiveOperation.ProgressTotal 0}}
+        <progress value="{{.Status.ActiveOperation.ProgressCurrent}}" max="{{.Status.ActiveOperation.ProgressTotal}}"></progress>
+        <p>Progress: {{.Status.ActiveOperation.ProgressCurrent}} / {{.Status.ActiveOperation.ProgressTotal}} posts ({{printf "%.1f" .Status.ActiveOperation.ProgressPercentage}}%)</p>
+        {{else}}
+        <progress></progress>
+        <p>Initializing...</p>
+        {{end}}
+
+        <p><small>Started: {{.Status.ActiveOperation.StartedAt.Format "Jan 2, 2006 15:04:05"}}</small></p>
+    </div>
+    {{else}}
+    <div>
+        <p><strong>No Active Operations</strong></p>
+
+        {{if gt .Status.TotalPosts 0}}
+        <div class="grid">
+            <div>
+                <p>Total Posts: <strong>{{.Status.TotalPosts}}</strong></p>
+                <p>Media Files: <strong>{{.Status.TotalMedia}}</strong></p>
+            </div>
+            <div>
+                {{if .Status.LastSuccessfulAt}}
+                <p>Last Sync: {{.Status.LastSuccessfulAt.Format "Jan 2, 2006 15:04"}}</p>
+                {{else}}
+                <p>Last Sync: <em>Never</em></p>
+                {{end}}
+            </div>
+        </div>
+        {{else}}
+        <p>No posts archived yet. Start an archive operation to begin.</p>
+        {{end}}
+    </div>
+    {{end}}
+</article>
+{{else}}
+<article>
+    <header><strong>Archive Status</strong></header>
+    <p>Loading...</p>
+</article>
+{{end}}
+{{end}}

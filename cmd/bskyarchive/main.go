@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/shindakun/bskyarchive/internal/archiver"
 	"github.com/shindakun/bskyarchive/internal/auth"
 	"github.com/shindakun/bskyarchive/internal/config"
 	"github.com/shindakun/bskyarchive/internal/storage"
@@ -52,6 +53,7 @@ func main() {
 	baseURL := cfg.GetBaseURL()
 	oauthManager := auth.InitOAuth(baseURL, cfg.OAuth.Scopes, sessionManager)
 	logger.Printf("OAuth manager initialized with base URL: %s", baseURL)
+	logger.Printf("OAuth scopes: %v", cfg.OAuth.Scopes)
 
 	// Initialize router
 	r := chi.NewRouter()
@@ -63,8 +65,11 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 
+	// Initialize archiver worker with OAuth manager for bskyoauth session access
+	worker := archiver.NewWorker(db, cfg.Archive.MediaPath, 300, 5*time.Minute, oauthManager)
+
 	// Initialize handlers
-	h := handlers.New(db, sessionManager, oauthManager, logger)
+	h := handlers.New(db, sessionManager, oauthManager, worker, logger)
 
 	// Public routes
 	r.Get("/", h.Landing)
@@ -95,6 +100,9 @@ func main() {
 
 	// Static files
 	r.Get("/static/*", h.ServeStatic)
+
+	// 404 handler (must be last)
+	r.NotFound(h.NotFound)
 
 	// HTTP server configuration
 	srv := &http.Server{

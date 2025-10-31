@@ -76,6 +76,7 @@ oauth:
   scopes:
     - "atproto"
     - "transition:generic"
+    - "transition:chat.bsky"
   session_max_age: 604800  # 7 days
 ```
 
@@ -122,7 +123,7 @@ CONFIG_PATH=/path/to/config.yaml ./bskyarchive
 
 This tool uses Bluesky's OAuth 2.0 with PKCE flow via the [bskyoauth](https://github.com/shindakun/bskyoauth) library.
 
-**No client ID or client secret is required** - the OAuth flow uses your application's base URL (`http://localhost:8080`) as the client identifier. This is a simpler, more secure approach than traditional OAuth.
+**No client ID or client secret is required** - the OAuth flow uses your application's base URL (`https://{{ngrok.url}}`) as the client identifier. This is a simpler, more secure approach than traditional OAuth.
 
 ## Architecture
 

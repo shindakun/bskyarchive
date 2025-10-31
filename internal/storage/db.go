@@ -103,13 +103,13 @@ func runMigrations(db *sql.DB) error {
 			like_count INTEGER DEFAULT 0,
 			repost_count INTEGER DEFAULT 0,
 			reply_count INTEGER DEFAULT 0,
+			quote_count INTEGER DEFAULT 0,
 			is_reply BOOLEAN DEFAULT 0,
 			reply_parent TEXT,
 			embed_type TEXT,
 			embed_data JSON,
 			labels JSON,
-			archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (did) REFERENCES sessions(did) ON DELETE CASCADE
+			archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)`,
 
 		// Create FTS5 virtual table for full-text search
@@ -208,6 +208,58 @@ func runMigrations(db *sql.DB) error {
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit migrations: %w", err)
+	}
+
+	// Run incremental migrations
+	if err := runIncrementalMigrations(db); err != nil {
+		return fmt.Errorf("failed to run incremental migrations: %w", err)
+	}
+
+	return nil
+}
+
+// runIncrementalMigrations runs schema updates for existing databases
+func runIncrementalMigrations(db *sql.DB) error {
+	// Get current schema version
+	var currentVersion int
+	err := db.QueryRow("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1").Scan(&currentVersion)
+	if err != nil {
+		return fmt.Errorf("failed to get current schema version: %w", err)
+	}
+
+	// Migration 2: Add quote_count column to posts table
+	if currentVersion < 2 {
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction for migration 2: %w", err)
+		}
+		defer tx.Rollback()
+
+		// Check if column already exists (in case of partial migration)
+		var columnExists bool
+		err = tx.QueryRow(`
+			SELECT COUNT(*) > 0
+			FROM pragma_table_info('posts')
+			WHERE name = 'quote_count'
+		`).Scan(&columnExists)
+		if err != nil {
+			return fmt.Errorf("failed to check if quote_count exists: %w", err)
+		}
+
+		if !columnExists {
+			if _, err := tx.Exec("ALTER TABLE posts ADD COLUMN quote_count INTEGER DEFAULT 0"); err != nil {
+				return fmt.Errorf("failed to add quote_count column: %w", err)
+			}
+		}
+
+		// Update schema version
+		if _, err := tx.Exec("INSERT OR REPLACE INTO schema_version (version) VALUES (2)"); err != nil {
+			return fmt.Errorf("failed to update schema version to 2: %w", err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("failed to commit migration 2: %w", err)
+		}
 	}
 
 	return nil

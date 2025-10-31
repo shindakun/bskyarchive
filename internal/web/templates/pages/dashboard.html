@@ -22,30 +22,73 @@
         <h2>Dashboard</h2>
     </hgroup>
 
+    {{if .Status}}
     <div class="grid">
         <article>
-            <header><strong>Archive Status</strong></header>
-            <p>No archive operations yet. Visit the Archive page to get started.</p>
-            <footer>
-                <a href="/archive" role="button">Manage Archive</a>
-            </footer>
+            <header><strong>Archive Statistics</strong></header>
+            <p>Posts: <strong>{{.Status.TotalPosts}}</strong></p>
+            <p>Media files: <strong>{{.Status.TotalMedia}}</strong></p>
+            <p>Posts with media: <strong>{{.Status.PostsWithMedia}}</strong></p>
+            <p>Replies: <strong>{{.Status.RepliesCount}}</strong></p>
+            {{if .Status.TotalArchiveSize}}
+            <p>Total size: <strong>{{printf "%.2f" .Status.ArchiveSizeMB}} MB</strong></p>
+            {{end}}
         </article>
 
         <article>
-            <header><strong>Quick Stats</strong></header>
-            <p>Posts: <strong>0</strong></p>
-            <p>Media files: <strong>0</strong></p>
+            <header><strong>Timeline</strong></header>
+            {{if .Status.OldestPost}}
+            <p>Oldest post: {{.Status.OldestPost.Format "Jan 2, 2006"}}</p>
+            {{end}}
+            {{if .Status.NewestPost}}
+            <p>Newest post: {{.Status.NewestPost.Format "Jan 2, 2006"}}</p>
+            {{end}}
+            {{if .Status.LastSuccessfulAt}}
+            <p>Last sync: {{.Status.LastSuccessfulAt.Format "Jan 2, 2006 15:04"}}</p>
+            {{else}}
             <p>Last sync: <em>Never</em></p>
+            {{end}}
         </article>
     </div>
 
+    {{if .Status.ActiveOperation}}
+    <article>
+        <header><strong>Active Operation</strong></header>
+        <p>Status: <strong>{{.Status.ActiveOperation.Status}}</strong></p>
+        <p>Type: {{.Status.ActiveOperation.Type}}</p>
+        {{if gt .Status.ActiveOperation.ProgressTotal 0}}
+        <progress value="{{.Status.ActiveOperation.ProgressCurrent}}" max="{{.Status.ActiveOperation.ProgressTotal}}"></progress>
+        <p>Progress: {{.Status.ActiveOperation.ProgressCurrent}} / {{.Status.ActiveOperation.ProgressTotal}} ({{printf "%.1f" .Status.ActiveOperation.ProgressPercentage}}%)</p>
+        {{else}}
+        <progress></progress>
+        <p>Starting...</p>
+        {{end}}
+        <footer>
+            <a href="/archive" role="button">View Details</a>
+        </footer>
+    </article>
+    {{end}}
+    {{else}}
     <article>
         <header><strong>Getting Started</strong></header>
+        <p>No archive data yet. Start your first archive operation to fetch your posts.</p>
         <ol>
             <li>Go to the <a href="/archive">Archive</a> page</li>
-            <li>Start your first archive operation to fetch your posts</li>
+            <li>Click "Start Archive" to fetch your posts</li>
             <li>Browse and search your archived content</li>
         </ol>
+        <footer>
+            <a href="/archive" role="button">Get Started</a>
+        </footer>
+    </article>
+    {{end}}
+
+    <article>
+        <header><strong>Quick Actions</strong></header>
+        <div class="grid">
+            <a href="/archive" role="button">Manage Archive</a>
+            <a href="/browse" role="button" class="secondary">Browse Posts</a>
+        </div>
     </article>
 </section>
 {{end}}

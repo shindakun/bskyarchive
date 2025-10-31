@@ -19,6 +19,7 @@ oauth:
   scopes:
     - "atproto"
     - "transition:generic"
+    - "transition:chat.bsky"
   session_secret: "${SESSION_SECRET}"
   session_max_age: 604800  # 7 days in seconds
 

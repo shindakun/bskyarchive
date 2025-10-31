@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -71,61 +72,39 @@ func (om *OAuthManager) HandleOAuthLogin(w http.ResponseWriter, r *http.Request)
 	http.Redirect(w, r, flowState.AuthURL, http.StatusSeeOther)
 }
 
-// HandleOAuthCallback completes the OAuth flow
+// HandleOAuthCallback completes the OAuth flow using bskyoauth's built-in handler
 func (om *OAuthManager) HandleOAuthCallback(w http.ResponseWriter, r *http.Request) {
-	// Check for OAuth errors
-	if errMsg := r.URL.Query().Get("error"); errMsg != "" {
-		errDesc := r.URL.Query().Get("error_description")
-		http.Error(w, fmt.Sprintf("OAuth error: %s - %s", errMsg, errDesc), http.StatusBadRequest)
-		return
-	}
+	// Use bskyoauth's callback handler which stores the session with DPoP key/nonce
+	handler := om.client.CallbackHandler(func(w http.ResponseWriter, r *http.Request, sessionID string) {
+		// bskyoauth has stored the full session (including DPoP key/nonce)
+		// Now we just need to link it to our app session
 
-	// Get authorization code, state, and issuer
-	code := r.URL.Query().Get("code")
-	if code == "" {
-		http.Error(w, "Missing authorization code", http.StatusBadRequest)
-		return
-	}
+		// Get the bskyoauth session to extract user info
+		bskySession, err := om.client.GetSession(sessionID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get session: %v", err), http.StatusInternalServerError)
+			return
+		}
 
-	state := r.URL.Query().Get("state")
-	if state == "" {
-		http.Error(w, "Missing state parameter", http.StatusBadRequest)
-		return
-	}
+		// Save session ID and user info to our database
+		err = om.sessionManager.SaveSession(
+			w, r,
+			bskySession.DID,
+			bskySession.DID, // Use DID as handle for now
+			bskySession.DID, // Use DID as display name for now
+			sessionID,        // Store the bskyoauth session ID
+			"",              // No longer store tokens directly
+		)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to save session: %v", err), http.StatusInternalServerError)
+			return
+		}
 
-	issuer := r.URL.Query().Get("iss")
+		// Redirect to dashboard
+		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	})
 
-	// Complete OAuth flow
-	ctx := r.Context()
-	bskySession, err := om.client.CompleteAuthFlow(ctx, code, state, issuer)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to complete OAuth flow: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Extract handle from form or use DID as fallback
-	// TODO: Fetch actual handle from Bluesky API in future iteration
-	handle := r.FormValue("handle")
-	if handle == "" {
-		handle = bskySession.DID // Use DID as fallback
-	}
-
-	// Save authenticated session to our database
-	err = om.sessionManager.SaveSession(
-		w, r,
-		bskySession.DID,
-		handle,
-		handle, // Use handle as display name initially
-		bskySession.AccessToken,
-		bskySession.RefreshToken,
-	)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to save session: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Redirect to dashboard
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	handler(w, r)
 }
 
 // HandleLogout clears session and redirects to landing page
@@ -143,4 +122,30 @@ func (om *OAuthManager) HandleLogout(w http.ResponseWriter, r *http.Request) {
 // ClientMetadataHandler returns the handler for OAuth client metadata
 func (om *OAuthManager) ClientMetadataHandler() http.HandlerFunc {
 	return om.client.ClientMetadataHandler()
+}
+
+// RefreshAccessToken refreshes an expired access token using the refresh token
+func (om *OAuthManager) RefreshAccessToken(did, refreshToken string) (string, string, error) {
+	ctx := context.Background()
+
+	// Create a session object for the refresh call
+	// Note: We only need DID and RefreshToken for the refresh operation
+	session := &bskyoauth.Session{
+		DID:          did,
+		RefreshToken: refreshToken,
+	}
+
+	// Call the bskyoauth RefreshToken method
+	newSession, err := om.client.RefreshToken(ctx, session)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to refresh token: %w", err)
+	}
+
+	// Return the new tokens
+	return newSession.AccessToken, newSession.RefreshToken, nil
+}
+
+// GetBskySession retrieves the bskyoauth session by session ID
+func (om *OAuthManager) GetBskySession(sessionID string) (*bskyoauth.Session, error) {
+	return om.client.GetSession(sessionID)
 }

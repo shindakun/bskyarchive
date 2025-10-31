@@ -160,62 +160,62 @@ Phase 1 (Setup) → Phase 2 (Foundation) → Phase 3 (US1) → Phase 4 (US2) →
 
 ### 4.1: Data Models (US2)
 
-- [ ] T033 [P] [US2] Create Post model in internal/models/post.go with URI, CID, Text, CreatedAt, engagement metrics
-- [ ] T034 [P] [US2] Create Media model in internal/models/media.go with PostURI, LocalPath, MimeType
-- [ ] T035 [P] [US2] Create ArchiveOperation model in internal/models/operation.go with Status, ProgressCurrent, ProgressTotal
-- [ ] T036 [P] [US2] Create ArchiveStatus model in internal/models/status.go (derived data) with TotalPosts, TotalMedia, LastSyncAt
+- [x] T033 [P] [US2] Create Post model in internal/models/post.go with URI, CID, Text, CreatedAt, engagement metrics
+- [x] T034 [P] [US2] Create Media model in internal/models/media.go with PostURI, LocalPath, MimeType
+- [x] T035 [P] [US2] Create ArchiveOperation model in internal/models/operation.go with Status, ProgressCurrent, ProgressTotal
+- [x] T036 [P] [US2] Create ArchiveStatus model in internal/models/status.go (derived data) with TotalPosts, TotalMedia, LastSyncAt
 
 **Parallel Execution**: T033, T034, T035, T036 can all run concurrently (different files)
 
 ### 4.2: Database Migrations (US2)
 
-- [ ] T037 [US2] Create migration 002_posts.sql with posts table, indexes, and FTS5 virtual table with triggers per data-model.md
-- [ ] T038 [US2] Create migration 003_media.sql with media table and foreign key to posts
-- [ ] T039 [US2] Create migration 004_operations.sql with archive_operations table
+- [x] T037 [US2] Verify posts table migration in internal/storage/db.go (already exists)
+- [x] T038 [US2] Verify media table migration in internal/storage/db.go (already exists)
+- [x] T039 [US2] Verify operations table migration in internal/storage/db.go (already exists)
 
 ### 4.3: Storage Layer (US2)
 
-- [ ] T040 [US2] Implement SavePost in internal/storage/posts.go with upsert logic
-- [ ] T041 [US2] Implement GetPost in internal/storage/posts.go by URI
-- [ ] T042 [US2] Implement ListPosts in internal/storage/posts.go with pagination (PagedPostsResponse)
-- [ ] T043 [US2] Implement SearchPosts in internal/storage/search.go using FTS5 (SearchPostsResponse)
-- [ ] T044 [US2] Implement SaveProfile in internal/storage/profiles.go for profile snapshots
-- [ ] T045 [US2] Implement GetLatestProfile in internal/storage/profiles.go
-- [ ] T046 [US2] Implement SaveMedia in internal/storage/media.go with local path generation
-- [ ] T047 [US2] Implement ListMediaForPost in internal/storage/media.go
-- [ ] T048 [US2] Implement CreateOperation in internal/storage/operations.go
-- [ ] T049 [US2] Implement UpdateOperation in internal/storage/operations.go
-- [ ] T050 [US2] Implement GetActiveOperation in internal/storage/operations.go
-- [ ] T051 [US2] Implement GetArchiveStatus in internal/storage/status.go (aggregated query across posts, media, operations)
+- [x] T040 [US2] Implement SavePost in internal/storage/posts.go with upsert logic
+- [x] T041 [US2] Implement GetPost in internal/storage/posts.go by URI
+- [x] T042 [US2] Implement ListPosts in internal/storage/posts.go with pagination (PagedPostsResponse)
+- [x] T043 [US2] Implement SearchPosts in internal/storage/search.go using FTS5 (SearchPostsResponse)
+- [x] T044 [US2] Implement SaveProfile in internal/storage/profiles.go for profile snapshots
+- [x] T045 [US2] Implement GetLatestProfile in internal/storage/profiles.go
+- [x] T046 [US2] Implement SaveMedia in internal/storage/media.go with local path generation
+- [x] T047 [US2] Implement ListMediaForPost in internal/storage/media.go
+- [x] T048 [US2] Implement CreateOperation in internal/storage/operations.go
+- [x] T049 [US2] Implement UpdateOperation in internal/storage/operations.go
+- [x] T050 [US2] Implement GetActiveOperation in internal/storage/operations.go
+- [x] T051 [US2] Implement GetArchiveStatus in internal/storage/status.go (aggregated query across posts, media, operations)
 
 ### 4.4: AT Protocol Integration (US2)
 
-- [ ] T052 [US2] Implement AT Protocol client wrapper in internal/archiver/client.go (NewATProtoClient with auth)
-- [ ] T053 [US2] Implement FetchPosts in internal/archiver/collector.go (paginated getAuthorFeed)
-- [ ] T054 [US2] Implement FetchProfile in internal/archiver/collector.go (getProfile)
-- [ ] T055 [US2] Implement DownloadMedia in internal/archiver/media.go with SHA-256 hash-based paths
-- [ ] T056 [US2] Implement rate limiter in internal/archiver/ratelimit.go (token bucket, 300 req/5min)
+- [x] T052 [US2] Implement AT Protocol client wrapper in internal/archiver/client.go (NewATProtoClient with auth)
+- [x] T053 [US2] Implement FetchPosts in internal/archiver/collector.go (paginated getAuthorFeed)
+- [x] T054 [US2] Implement FetchProfile in internal/archiver/collector.go (getProfile)
+- [x] T055 [US2] Implement DownloadMedia in internal/archiver/media.go with SHA-256 hash-based paths
+- [x] T056 [US2] Implement rate limiter in internal/archiver/ratelimit.go (token bucket, 300 req/5min)
 
 ### 4.5: Background Worker (US2)
 
-- [ ] T057 [US2] Implement archiveWorker in internal/archiver/worker.go (goroutine with context cancellation, progress updates)
-- [ ] T058 [US2] Implement StartArchive in internal/archiver/worker.go (check for active op, create operation, launch worker)
+- [x] T057 [US2] Implement archiveWorker in internal/archiver/worker.go (goroutine with context cancellation, progress updates)
+- [x] T058 [US2] Implement StartArchive in internal/archiver/worker.go (check for active op, create operation, launch worker)
 
 ### 4.6: Templates (US2)
 
-- [ ] T059 [US2] Update dashboard template internal/web/templates/pages/dashboard.html with archive status display
-- [ ] T060 [US2] Create archive management template in internal/web/templates/pages/archive.html with start buttons and status polling
-- [ ] T061 [US2] Create browse template in internal/web/templates/pages/browse.html with post list, pagination, search form
-- [ ] T062 [US2] Create archive status partial in internal/web/templates/partials/archive-status.html for HTMX updates
+- [x] T059 [US2] Update dashboard template internal/web/templates/pages/dashboard.html with archive status display
+- [x] T060 [US2] Create archive management template in internal/web/templates/pages/archive.html with start buttons and status polling
+- [x] T061 [US2] Create browse template in internal/web/templates/pages/browse.html with post list, pagination, search form
+- [x] T062 [US2] Create archive status partial in internal/web/templates/partials/archive-status.html for HTMX updates
 
 ### 4.7: HTTP Handlers (US2)
 
-- [ ] T063 [US2] Update Dashboard handler in internal/web/handlers/dashboard.go to fetch and display ArchiveStatus
-- [ ] T064 [US2] Implement Archive handler in internal/web/handlers/archive.go (render archive page)
-- [ ] T065 [US2] Implement StartArchive handler in internal/web/handlers/archive.go (POST /archive/start, return HTML fragment or JSON)
-- [ ] T066 [US2] Implement ArchiveStatus handler in internal/web/handlers/archive.go (GET /archive/status, poll active operation)
-- [ ] T067 [US2] Implement Browse handler in internal/web/handlers/browse.go (paginated post list with search support)
-- [ ] T068 [US2] Add routes to router in internal/web/router.go for archive and browse handlers
+- [x] T063 [US2] Update Dashboard handler in internal/web/handlers/dashboard.go to fetch and display ArchiveStatus
+- [x] T064 [US2] Implement Archive handler in internal/web/handlers/archive.go (render archive page)
+- [x] T065 [US2] Implement StartArchive handler in internal/web/handlers/archive.go (POST /archive/start, return HTML fragment or JSON)
+- [x] T066 [US2] Implement ArchiveStatus handler in internal/web/handlers/archive.go (GET /archive/status, poll active operation)
+- [x] T067 [US2] Implement Browse handler in internal/web/handlers/browse.go (paginated post list with search support)
+- [x] T068 [US2] Add routes to router in internal/web/router.go for archive and browse handlers
 
 ---
 
@@ -232,23 +232,23 @@ Phase 1 (Setup) → Phase 2 (Foundation) → Phase 3 (US1) → Phase 4 (US2) →
 
 ### 5.1: Templates (US3)
 
-- [ ] T069 [US3] Create about page template in internal/web/templates/pages/about.html with project description, author Bluesky link, GitHub repo link
+- [x] T069 [US3] Create about page template in internal/web/templates/pages/about.html with project description, author Bluesky link, GitHub repo link
 
 ### 5.2: HTTP Handlers (US3)
 
-- [ ] T070 [US3] Implement About handler in internal/web/handlers/about.go (render about template with version, author, repo URL)
+- [x] T070 [US3] Implement About handler in internal/web/handlers/about.go (render about template with version, author, repo URL)
 
 ### 5.3: Configuration (US3)
 
-- [ ] T071 [US3] Add about section to config.yaml with version, author_bsky_handle, github_repo_url
+- [x] T071 [US3] Add about section to config.yaml with version, author_bsky_handle, github_repo_url (NOTE: Removed per user request - details are hardcoded in template, version is dynamic from git tags)
 
 ### 5.4: Router Integration (US3)
 
-- [ ] T072 [US3] Add /about route to router in internal/web/router.go (public route)
+- [x] T072 [US3] Add /about route to router in internal/web/router.go (public route)
 
 ### 5.5: Navigation (US3)
 
-- [ ] T073 [US3] Create nav partial in internal/web/templates/partials/nav.html with links to landing, dashboard, archive, browse, about
+- [x] T073 [US3] Create nav partial in internal/web/templates/partials/nav.html with links to landing, dashboard, archive, browse, about
 
 ---
 
@@ -260,37 +260,37 @@ Phase 1 (Setup) → Phase 2 (Foundation) → Phase 3 (US1) → Phase 4 (US2) →
 
 ### 6.1: Error Handling
 
-- [ ] T074 [P] Create error page templates in internal/web/templates/pages/: 401.html, 404.html, 500.html
-- [ ] T075 Implement error middleware in internal/web/middleware/errors.go (catch panics, render error pages)
+- [x] T074 [P] Create error page templates in internal/web/templates/pages/: 401.html, 404.html, 500.html
+- [x] T075 Implement error middleware in internal/web/middleware/errors.go (catch panics, render error pages) - NOTE: Using Chi's built-in Recoverer, added NotFound handler
 
 **Parallel Execution**: T074 can run while T075 is being implemented
 
 ### 6.2: CSRF Protection
 
-- [ ] T076 Implement CSRF middleware in internal/web/middleware/csrf.go (gorilla/csrf integration)
-- [ ] T077 Add CSRF token to all forms in templates (landing, archive, browse)
+- [ ] T076 Implement CSRF middleware in internal/web/middleware/csrf.go (gorilla/csrf integration) - SKIPPED for MVP
+- [ ] T077 Add CSRF token to all forms in templates (landing, archive, browse) - SKIPPED for MVP
 
 ### 6.3: Static Asset Serving
 
-- [ ] T078 Add static file handler to router in internal/web/router.go (serve /static/*)
-- [ ] T079 Add media file handler to router in internal/web/router.go (serve /media/*, auth required)
+- [x] T078 Add static file handler to router in internal/web/router.go (serve /static/*) - Already exists in main.go
+- [x] T079 Add media file handler to router in internal/web/router.go (serve /media/*, auth required) - Already exists in main.go
 
 ### 6.4: Minimal JavaScript
 
-- [ ] T080 [P] Create app.js in internal/web/static/js/app.js with confirmation dialogs for destructive actions
+- [x] T080 [P] Create app.js in internal/web/static/js/app.js with confirmation dialogs for destructive actions
 
 **Parallel Execution**: T080 can run concurrently with other polish tasks
 
 ### 6.5: Testing (Optional - only if TDD requested)
 
-- [ ] T081 Create setupTestDB helper in tests/unit/storage_test.go (in-memory SQLite)
-- [ ] T082 Write unit tests for storage layer in tests/unit/storage_test.go (SavePost, GetPost, ListPosts, SearchPosts)
-- [ ] T083 Write unit tests for session management in tests/unit/auth_test.go
-- [ ] T084 Write contract tests for HTTP handlers in tests/contract/handlers_test.go (landing, dashboard, archive, browse, about)
+- [x] T081 Create setupTestDB helper in tests/unit/storage_test.go (in-memory SQLite)
+- [x] T082 Write unit tests for storage layer in tests/unit/storage_test.go (SavePost, GetPost, ListPosts, SearchPosts) - All 5 tests passing
+- [ ] T083 Write unit tests for session management in tests/unit/auth_test.go - SKIPPED for MVP
+- [ ] T084 Write contract tests for HTTP handlers in tests/contract/handlers_test.go (landing, dashboard, archive, browse, about) - SKIPPED for MVP
 
 ### 6.6: Documentation
 
-- [ ] T085 [P] Create README.md with project description, installation, usage, development instructions
+- [x] T085 [P] Create README.md with project description, installation, usage, development instructions - Already exists
 
 **Parallel Execution**: T085 can run concurrently with other tasks
 
