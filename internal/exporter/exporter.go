@@ -53,6 +53,20 @@ func CheckDiskSpace(path string, requiredBytes uint64) error {
 func Run(db *sql.DB, job *models.ExportJob, progressChan chan<- models.ExportProgress) error {
 	defer close(progressChan)
 
+	// Error recovery: cleanup partial export on failure
+	var exportSucceeded bool
+	defer func() {
+		if !exportSucceeded && job.ExportDir != "" {
+			// Export failed - clean up partial export directory
+			log.Printf("Export failed, cleaning up partial export at: %s", job.ExportDir)
+			if err := os.RemoveAll(job.ExportDir); err != nil {
+				log.Printf("Warning: Failed to cleanup partial export: %v", err)
+			} else {
+				log.Printf("Partial export directory removed successfully")
+			}
+		}
+	}()
+
 	// Update status to running
 	job.Progress.Status = models.ExportStatusRunning
 	progressChan <- job.Progress
@@ -110,6 +124,7 @@ func Run(db *sql.DB, job *models.ExportJob, progressChan chan<- models.ExportPro
 			log.Printf("Warning: Failed to write manifest: %v", err)
 		}
 
+		exportSucceeded = true // Mark as successful to prevent cleanup
 		return nil // Not an error - just empty
 	}
 
@@ -207,6 +222,7 @@ func Run(db *sql.DB, job *models.ExportJob, progressChan chan<- models.ExportPro
 	job.Progress.Status = models.ExportStatusCompleted
 	progressChan <- job.Progress
 
+	exportSucceeded = true // Mark as successful to prevent cleanup
 	log.Printf("Export completed successfully: %s", exportDir)
 	return nil
 }
