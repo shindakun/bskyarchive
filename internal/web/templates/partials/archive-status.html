@@ -43,6 +43,51 @@
     </div>
     {{end}}
 </article>
+
+<!-- Recent Operations - Now included in polling -->
+{{if .Status.RecentOperations}}
+<article>
+    <header><strong>Recent Operations</strong></header>
+    <figure>
+        <table role="grid">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                    <th>Completed</th>
+                    <th>Progress</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Status.RecentOperations}}
+                <tr>
+                    <td>{{.Type}}</td>
+                    <td>{{.Status}}</td>
+                    <td>{{.StartedAt.Format "Jan 2 15:04"}}</td>
+                    <td>
+                        {{if .CompletedAt}}
+                        {{.CompletedAt.Format "Jan 2 15:04"}}
+                        {{else}}
+                        -
+                        {{end}}
+                    </td>
+                    <td>
+                        {{if .IsComplete}}
+                        {{.ProgressCurrent}} posts
+                        {{else if gt .ProgressTotal 0}}
+                        {{.ProgressCurrent}} / {{.ProgressTotal}} ({{printf "%.0f" .ProgressPercentage}}%)
+                        {{else}}
+                        Starting...
+                        {{end}}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </figure>
+</article>
+{{end}}
 {{else}}
 <article>
     <header><strong>Archive Status</strong></header>
