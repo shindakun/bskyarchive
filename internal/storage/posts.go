@@ -239,7 +239,9 @@ func ListPostsWithDateRange(db *sql.DB, did string, dateRange *models.DateRange,
 		query = selectClause
 	}
 
-	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	// Add deterministic ordering for stable pagination
+	// uri is the primary key, so it acts as a tie-breaker when created_at values are identical
+	query += " ORDER BY created_at DESC, uri ASC LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
 	rows, err := db.Query(query, args...)

@@ -1,6 +1,7 @@
 package exporter
 
 import (
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -8,10 +9,14 @@ import (
 	"strings"
 
 	"github.com/shindakun/bskyarchive/internal/models"
+	"github.com/shindakun/bskyarchive/internal/storage"
 )
 
 // ExportToCSV exports posts to a CSV file with proper encoding and formatting
 // The CSV includes a UTF-8 BOM for Excel compatibility and follows RFC 4180
+//
+// DEPRECATED: This function loads all posts into memory.
+// For large archives, use ExportToCSVBatched instead.
 func ExportToCSV(posts []models.Post, outputPath string) error {
 	// Create the CSV file
 	file, err := os.Create(outputPath)
@@ -68,6 +73,92 @@ func ExportToCSV(posts []models.Post, outputPath string) error {
 	// Ensure all data is written
 	if err := writer.Error(); err != nil {
 		return fmt.Errorf("CSV writer error: %w", err)
+	}
+
+	return nil
+}
+
+// ExportToCSVBatched exports posts to CSV using batched streaming writes
+// This prevents memory exhaustion on large archives by processing posts in batches
+func ExportToCSVBatched(db *sql.DB, did string, dateRange *models.DateRange, outputPath string, batchSize int) error {
+	// Create the CSV file
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to create CSV file: %w", err)
+	}
+	defer file.Close()
+
+	// Write UTF-8 BOM for Excel compatibility
+	if _, err := file.WriteString("\xEF\xBB\xBF"); err != nil {
+		return fmt.Errorf("failed to write BOM: %w", err)
+	}
+
+	// Create CSV writer
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Write header row
+	header := []string{
+		"URI",
+		"CID",
+		"DID",
+		"Text",
+		"CreatedAt",
+		"LikeCount",
+		"RepostCount",
+		"ReplyCount",
+		"QuoteCount",
+		"IsReply",
+		"ReplyParent",
+		"HasMedia",
+		"MediaFiles",
+		"EmbedType",
+		"IndexedAt",
+	}
+
+	if err := writer.Write(header); err != nil {
+		return fmt.Errorf("failed to write CSV header: %w", err)
+	}
+
+	// Process posts in batches
+	offset := 0
+
+	for {
+		// Fetch next batch
+		batch, err := storage.ListPostsWithDateRange(db, did, dateRange, batchSize, offset)
+		if err != nil {
+			return fmt.Errorf("failed to fetch batch at offset %d: %w", offset, err)
+		}
+
+		// No more posts
+		if len(batch) == 0 {
+			break
+		}
+
+		// Write each post in the batch
+		for _, post := range batch {
+			row, err := postToCSVRow(post)
+			if err != nil {
+				return fmt.Errorf("failed to convert post to CSV row: %w", err)
+			}
+
+			if err := writer.Write(row); err != nil {
+				return fmt.Errorf("failed to write CSV row: %w", err)
+			}
+		}
+
+		// Flush after each batch to ensure data is written to disk
+		writer.Flush()
+		if err := writer.Error(); err != nil {
+			return fmt.Errorf("CSV writer error after batch: %w", err)
+		}
+
+		offset += len(batch)
+
+		// If we got fewer posts than batch size, we're done
+		if len(batch) < batchSize {
+			break
+		}
 	}
 
 	return nil
