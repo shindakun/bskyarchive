@@ -2,8 +2,10 @@ package exporter
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/shindakun/bskyarchive/internal/models"
 )
@@ -123,8 +125,82 @@ func getMediaFilesList(post models.Post) string {
 		return ""
 	}
 
-	// For now, return empty string - media file extraction would require
-	// parsing the embed_data JSON which contains the media hashes
-	// This can be enhanced in a future iteration if needed
-	return ""
+	// Parse embed_data to extract media hashes
+	var embedData map[string]interface{}
+	if err := json.Unmarshal(post.EmbedData, &embedData); err != nil {
+		return ""
+	}
+
+	var hashes []string
+
+	// Handle images embed type
+	if images, ok := embedData["images"].([]interface{}); ok {
+		for _, img := range images {
+			if imgMap, ok := img.(map[string]interface{}); ok {
+				// Extract hash from fullsize URL
+				if fullsize, ok := imgMap["fullsize"].(string); ok {
+					hash := extractHashFromURL(fullsize)
+					if hash != "" {
+						hashes = append(hashes, hash)
+					}
+				}
+			}
+		}
+	}
+
+	// Handle record_with_media embed type (has media nested inside)
+	if media, ok := embedData["media"].(map[string]interface{}); ok {
+		if images, ok := media["images"].([]interface{}); ok {
+			for _, img := range images {
+				if imgMap, ok := img.(map[string]interface{}); ok {
+					if fullsize, ok := imgMap["fullsize"].(string); ok {
+						hash := extractHashFromURL(fullsize)
+						if hash != "" {
+							hashes = append(hashes, hash)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Handle external embed with thumbnail (has_media is true for these)
+	if external, ok := embedData["external"].(map[string]interface{}); ok {
+		if thumb, ok := external["thumb"].(string); ok {
+			hash := extractHashFromURL(thumb)
+			if hash != "" {
+				hashes = append(hashes, hash)
+			}
+		}
+	}
+
+	if len(hashes) == 0 {
+		return ""
+	}
+
+	// Return semicolon-separated list
+	return strings.Join(hashes, ";")
+}
+
+// extractHashFromURL extracts the content hash from a Bluesky CDN URL
+// Example: https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:xxx/bafkreixxx@jpeg
+// Returns: bafkreixxx
+func extractHashFromURL(url string) string {
+	// Find last slash
+	lastSlash := strings.LastIndex(url, "/")
+	if lastSlash == -1 {
+		return ""
+	}
+
+	// Get the part after last slash (e.g., "bafkreixxx@jpeg")
+	filename := url[lastSlash+1:]
+
+	// Split by @ to remove extension
+	atIndex := strings.Index(filename, "@")
+	if atIndex == -1 {
+		// No @ found, return the whole filename
+		return filename
+	}
+
+	return filename[:atIndex]
 }

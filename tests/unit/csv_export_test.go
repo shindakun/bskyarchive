@@ -413,3 +413,122 @@ func TestExportToCSVInvalidPath(t *testing.T) {
 		t.Fatal("Expected error for invalid path, got nil")
 	}
 }
+
+// TestCSVMediaFilesExtraction tests that media hashes are correctly extracted from embed_data
+func TestCSVMediaFilesExtraction(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputPath := filepath.Join(tmpDir, "media_test.csv")
+
+	// Create test posts with different embed types
+	testPosts := []models.Post{
+		{
+			URI:       "at://test/post1",
+			CID:       "cid1",
+			DID:       "did:test",
+			Text:      "Post with multiple images",
+			CreatedAt: time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC),
+			IndexedAt: time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC),
+			HasMedia:  true,
+			EmbedType: "images",
+			EmbedData: []byte(`{
+				"$type": "app.bsky.embed.images#view",
+				"images": [
+					{
+						"alt": "First image",
+						"fullsize": "https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:test/bafkreiabc123@jpeg",
+						"thumb": "https://cdn.bsky.app/img/feed_thumbnail/plain/did:plc:test/bafkreiabc123@jpeg"
+					},
+					{
+						"alt": "Second image",
+						"fullsize": "https://cdn.bsky.app/img/feed_fullsize/plain/did:plc:test/bafkreixyz789@jpeg",
+						"thumb": "https://cdn.bsky.app/img/feed_thumbnail/plain/did:plc:test/bafkreixyz789@jpeg"
+					}
+				]
+			}`),
+		},
+		{
+			URI:       "at://test/post2",
+			CID:       "cid2",
+			DID:       "did:test",
+			Text:      "Post with external link and thumbnail",
+			CreatedAt: time.Date(2025, 1, 15, 11, 0, 0, 0, time.UTC),
+			IndexedAt: time.Date(2025, 1, 15, 11, 0, 0, 0, time.UTC),
+			HasMedia:  true,
+			EmbedType: "external",
+			EmbedData: []byte(`{
+				"$type": "app.bsky.embed.external#view",
+				"external": {
+					"description": "Test link",
+					"thumb": "https://cdn.bsky.app/img/feed_thumbnail/plain/did:plc:test/bafkreiexternal@jpeg",
+					"title": "Test Title",
+					"uri": "https://example.com"
+				}
+			}`),
+		},
+		{
+			URI:       "at://test/post3",
+			CID:       "cid3",
+			DID:       "did:test",
+			Text:      "Post without media",
+			CreatedAt: time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC),
+			IndexedAt: time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC),
+			HasMedia:  false,
+		},
+	}
+
+	// Export to CSV
+	err := exporter.ExportToCSV(testPosts, outputPath)
+	if err != nil {
+		t.Fatalf("ExportToCSV failed: %v", err)
+	}
+
+	// Read and parse CSV
+	fileData, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to read CSV file: %v", err)
+	}
+
+	csvData := bytes.TrimPrefix(fileData, []byte{0xEF, 0xBB, 0xBF})
+	reader := csv.NewReader(bytes.NewReader(csvData))
+	records, err := reader.ReadAll()
+	if err != nil {
+		t.Fatalf("Failed to parse CSV: %v", err)
+	}
+
+	if len(records) != 4 { // header + 3 data rows
+		t.Fatalf("Expected 4 rows, got %d", len(records))
+	}
+
+	// Find MediaFiles column index
+	header := records[0]
+	mediaFilesIndex := -1
+	for i, col := range header {
+		if col == "MediaFiles" {
+			mediaFilesIndex = i
+			break
+		}
+	}
+	if mediaFilesIndex == -1 {
+		t.Fatal("MediaFiles column not found in header")
+	}
+
+	// Verify first post has two media hashes separated by semicolon
+	row1MediaFiles := records[1][mediaFilesIndex]
+	expectedRow1 := "bafkreiabc123;bafkreixyz789"
+	if row1MediaFiles != expectedRow1 {
+		t.Errorf("Row 1 MediaFiles: expected '%s', got '%s'", expectedRow1, row1MediaFiles)
+	}
+
+	// Verify second post has one media hash (external thumb)
+	row2MediaFiles := records[2][mediaFilesIndex]
+	expectedRow2 := "bafkreiexternal"
+	if row2MediaFiles != expectedRow2 {
+		t.Errorf("Row 2 MediaFiles: expected '%s', got '%s'", expectedRow2, row2MediaFiles)
+	}
+
+	// Verify third post has no media files (empty string)
+	row3MediaFiles := records[3][mediaFilesIndex]
+	if row3MediaFiles != "" {
+		t.Errorf("Row 3 MediaFiles: expected empty string, got '%s'", row3MediaFiles)
+	}
+}
