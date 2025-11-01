@@ -90,10 +90,27 @@ func Run(db *sql.DB, job *models.ExportJob, progressChan chan<- models.ExportPro
 
 	job.Progress.PostsTotal = len(posts)
 	if len(posts) == 0 {
-		job.Progress.Status = models.ExportStatusFailed
-		job.Progress.Error = "No posts found to export"
+		// Handle empty archive gracefully - this is not an error condition
+		job.Progress.Status = models.ExportStatusCompleted
+		job.Progress.Error = "No posts found in your archive matching the selected criteria. Try adjusting your date range or archive some posts first."
 		progressChan <- job.Progress
-		return fmt.Errorf("no posts found to export")
+
+		// Still create manifest for consistency
+		manifest := GenerateManifest(
+			job.Options.Format,
+			0, // postCount
+			0, // mediaCount
+			job.Options.DateRange,
+			version.GetVersion(),
+			[]string{}, // no files
+		)
+
+		manifestPath := filepath.Join(exportDir, "manifest.json")
+		if err := WriteManifest(manifestPath, manifest); err != nil {
+			log.Printf("Warning: Failed to write manifest: %v", err)
+		}
+
+		return nil // Not an error - just empty
 	}
 
 	// Step 3: Export posts to JSON or CSV

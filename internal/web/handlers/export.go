@@ -145,6 +145,20 @@ func (h *Handlers) StartExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for concurrent exports (prevent multiple exports running at once)
+	exportJobsMu.RLock()
+	for _, existingJob := range exportJobs {
+		// Check if there's an active export for this user
+		if existingJob.Options.DID == session.DID &&
+			(existingJob.Progress.Status == models.ExportStatusQueued ||
+				existingJob.Progress.Status == models.ExportStatusRunning) {
+			exportJobsMu.RUnlock()
+			http.Error(w, "An export is already in progress. Please wait for it to complete before starting a new one.", http.StatusConflict)
+			return
+		}
+	}
+	exportJobsMu.RUnlock()
+
 	// Create export job
 	jobID := time.Now().Format("2006-01-02_15-04-05")
 	job := &models.ExportJob{
