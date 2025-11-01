@@ -92,18 +92,35 @@ func Run(db *sql.DB, job *models.ExportJob, progressChan chan<- models.ExportPro
 		}
 	}
 
-	// Step 2: Fetch posts from database
-	log.Printf("Fetching posts for export (DID: %s)", job.Options.DID)
-	posts, err := storage.ListPostsWithDateRange(db, job.Options.DID, job.Options.DateRange, 0, 0)
-	if err != nil {
+	// Step 2: Count total posts for progress tracking
+	log.Printf("Counting posts for export (DID: %s)", job.Options.DID)
+
+	// Build count query with same filters as export
+	countQuery := "SELECT COUNT(*) FROM posts WHERE did = ?"
+	args := []interface{}{job.Options.DID}
+
+	// Add date range filters if specified
+	if job.Options.DateRange != nil {
+		if !job.Options.DateRange.StartDate.IsZero() {
+			countQuery += " AND created_at >= ?"
+			args = append(args, job.Options.DateRange.StartDate)
+		}
+		if !job.Options.DateRange.EndDate.IsZero() {
+			countQuery += " AND created_at <= ?"
+			args = append(args, job.Options.DateRange.EndDate)
+		}
+	}
+
+	var totalPosts int
+	if err := db.QueryRow(countQuery, args...).Scan(&totalPosts); err != nil {
 		job.Progress.Status = models.ExportStatusFailed
-		job.Progress.Error = fmt.Sprintf("Failed to fetch posts: %v", err)
+		job.Progress.Error = fmt.Sprintf("Failed to count posts: %v", err)
 		progressChan <- job.Progress
 		return err
 	}
 
-	job.Progress.PostsTotal = len(posts)
-	if len(posts) == 0 {
+	job.Progress.PostsTotal = totalPosts
+	if totalPosts == 0 {
 		// Handle empty archive gracefully - this is not an error condition
 		job.Progress.Status = models.ExportStatusCompleted
 		job.Progress.Error = "No posts found in your archive matching the selected criteria. Try adjusting your date range or archive some posts first."
@@ -128,11 +145,14 @@ func Run(db *sql.DB, job *models.ExportJob, progressChan chan<- models.ExportPro
 		return nil // Not an error - just empty
 	}
 
-	// Step 3: Export posts to JSON or CSV
+	// Step 3: Export posts to JSON or CSV using batched streaming
 	var dataFile string
+	const batchSize = 1000 // Process 1000 posts at a time
+
 	if job.Options.Format == models.ExportFormatJSON {
 		dataFile = filepath.Join(exportDir, "posts.json")
-		if err := ExportToJSON(posts, dataFile); err != nil {
+		log.Printf("Starting batched JSON export (batch size: %d)", batchSize)
+		if err := ExportToJSONBatched(db, job.Options.DID, job.Options.DateRange, dataFile, batchSize); err != nil {
 			job.Progress.Status = models.ExportStatusFailed
 			job.Progress.Error = fmt.Sprintf("Failed to export JSON: %v", err)
 			progressChan <- job.Progress
@@ -140,7 +160,8 @@ func Run(db *sql.DB, job *models.ExportJob, progressChan chan<- models.ExportPro
 		}
 	} else if job.Options.Format == models.ExportFormatCSV {
 		dataFile = filepath.Join(exportDir, "posts.csv")
-		if err := ExportToCSV(posts, dataFile); err != nil {
+		log.Printf("Starting batched CSV export (batch size: %d)", batchSize)
+		if err := ExportToCSVBatched(db, job.Options.DID, job.Options.DateRange, dataFile, batchSize); err != nil {
 			job.Progress.Status = models.ExportStatusFailed
 			job.Progress.Error = fmt.Sprintf("Failed to export CSV: %v", err)
 			progressChan <- job.Progress
@@ -153,7 +174,8 @@ func Run(db *sql.DB, job *models.ExportJob, progressChan chan<- models.ExportPro
 		return fmt.Errorf("unknown export format: %s", job.Options.Format)
 	}
 
-	job.Progress.PostsProcessed = len(posts)
+	// Update progress after export completes
+	job.Progress.PostsProcessed = totalPosts
 	progressChan <- job.Progress
 
 	// Step 4: Copy media files if requested
@@ -161,25 +183,43 @@ func Run(db *sql.DB, job *models.ExportJob, progressChan chan<- models.ExportPro
 		// Build map of source -> destination paths for all media
 		mediaFiles := make(map[string]string)
 
-		for _, post := range posts {
-			if !post.HasMedia {
-				continue
-			}
-
-			mediaList, err := storage.ListMediaForPost(db, post.URI)
+		// Fetch posts with media in batches to avoid loading all into memory
+		offset := 0
+		for {
+			posts, err := storage.ListPostsWithDateRange(db, job.Options.DID, job.Options.DateRange, batchSize, offset)
 			if err != nil {
-				log.Printf("Warning: failed to list media for post %s: %v", post.URI, err)
-				continue
+				log.Printf("Warning: failed to fetch posts for media processing: %v", err)
+				break
+			}
+			if len(posts) == 0 {
+				break
 			}
 
-			job.Progress.MediaTotal += len(mediaList)
+			for _, post := range posts {
+				if !post.HasMedia {
+					continue
+				}
 
-			for _, media := range mediaList {
-				// Source path is from database
-				srcPath := media.FilePath
-				// Destination preserves the same filename
-				dstPath := filepath.Join(mediaDir, filepath.Base(media.FilePath))
-				mediaFiles[srcPath] = dstPath
+				mediaList, err := storage.ListMediaForPost(db, post.URI)
+				if err != nil {
+					log.Printf("Warning: failed to list media for post %s: %v", post.URI, err)
+					continue
+				}
+
+				job.Progress.MediaTotal += len(mediaList)
+
+				for _, media := range mediaList {
+					// Source path is from database
+					srcPath := media.FilePath
+					// Destination preserves the same filename
+					dstPath := filepath.Join(mediaDir, filepath.Base(media.FilePath))
+					mediaFiles[srcPath] = dstPath
+				}
+			}
+
+			offset += len(posts)
+			if len(posts) < batchSize {
+				break
 			}
 		}
 
@@ -203,7 +243,7 @@ func Run(db *sql.DB, job *models.ExportJob, progressChan chan<- models.ExportPro
 	files, _ := GetExportFiles(exportDir)
 	manifest := GenerateManifest(
 		job.Options.Format,
-		len(posts),
+		totalPosts,
 		job.Progress.MediaCopied,
 		job.Options.DateRange,
 		version.GetVersion(),
