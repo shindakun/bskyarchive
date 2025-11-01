@@ -169,10 +169,10 @@ Each user story phase can be completed, tested, and delivered independently.
 
 **Goal**: Handle edge cases, improve UX, ensure robustness
 
-- [ ] T045 [P] Implement concurrent export prevention in handlers/export.go (check for existing running job)
-- [ ] T046 [P] Add empty archive handling (show friendly message if no posts to export)
-- [ ] T047 [P] Implement missing media file warning logging in media.go (log but continue export)
-- [ ] T048 [P] Add export completion notification in UI (success message with download link)
+- [x] T045 [P] Implement concurrent export prevention in handlers/export.go (check for existing running job)
+- [x] T046 [P] Add empty archive handling (show friendly message if no posts to export)
+- [x] T047 [P] Implement missing media file warning logging in media.go (log but continue export)
+- [x] T048 [P] Add export completion notification in UI (success message with download link)
 - [ ] T049 Implement large export handling (stream processing for 10,000+ posts without memory bloat)
 - [ ] T050 Add error recovery (partial export cleanup on failure)
 - [ ] T051 Update README.md with export feature documentation (usage, file formats, troubleshooting)
