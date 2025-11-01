@@ -81,6 +81,8 @@ func TestExportBatching_Memory(t *testing.T) {
 				if allocMB > peakMemory {
 					peakMemory = allocMB
 				}
+				// Sleep to avoid busy-waiting
+				runtime.Gosched()
 			}
 		}
 	}()

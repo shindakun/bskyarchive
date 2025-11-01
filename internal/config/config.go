@@ -26,6 +26,25 @@ type ServerConfig struct {
 	WriteTimeout    time.Duration `yaml:"write_timeout"`
 	IdleTimeout     time.Duration `yaml:"idle_timeout"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
+	Security        SecurityConfig `yaml:"security"`
+}
+
+// SecurityConfig contains security-related settings
+type SecurityConfig struct {
+	CSRFEnabled     bool                  `yaml:"csrf_enabled"`
+	CSRFFieldName   string                `yaml:"csrf_field_name"`
+	MaxRequestBytes int64                 `yaml:"max_request_bytes"`
+	Headers         SecurityHeadersConfig `yaml:"headers"`
+}
+
+// SecurityHeadersConfig contains HTTP security header settings
+type SecurityHeadersConfig struct {
+	XFrameOptions           string `yaml:"x_frame_options"`
+	XContentTypeOptions     string `yaml:"x_content_type_options"`
+	XXSSProtection          string `yaml:"x_xss_protection"`
+	ReferrerPolicy          string `yaml:"referrer_policy"`
+	ContentSecurityPolicy   string `yaml:"content_security_policy"`
+	StrictTransportSecurity string `yaml:"strict_transport_security"`
 }
 
 // ArchiveConfig contains archive-specific settings
@@ -39,9 +58,11 @@ type ArchiveConfig struct {
 
 // OAuthConfig contains Bluesky OAuth settings
 type OAuthConfig struct {
-	Scopes        []string `yaml:"scopes"`
-	SessionSecret string   `yaml:"session_secret"`
-	SessionMaxAge int      `yaml:"session_max_age"`
+	Scopes         []string `yaml:"scopes"`
+	SessionSecret  string   `yaml:"session_secret"`
+	SessionMaxAge  int      `yaml:"session_max_age"`
+	CookieSecure   string   `yaml:"cookie_secure"`   // "auto", "true", "false"
+	CookieSameSite string   `yaml:"cookie_samesite"` // "strict", "lax", "none"
 }
 
 // RateLimitConfig contains rate limiting settings
@@ -131,4 +152,9 @@ func (c *Config) GetBaseURL() string {
 		return c.Server.BaseURL
 	}
 	return fmt.Sprintf("http://%s", c.GetAddr())
+}
+
+// IsHTTPS returns true if the base URL uses HTTPS
+func (c *Config) IsHTTPS() bool {
+	return strings.HasPrefix(strings.ToLower(c.GetBaseURL()), "https://")
 }

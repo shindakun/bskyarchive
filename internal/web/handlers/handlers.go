@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -49,7 +50,7 @@ func (h *Handlers) Landing(w http.ResponseWriter, r *http.Request) {
 
 	// Render landing page
 	data := TemplateData{}
-	if err := h.renderTemplate(w, "landing", data); err != nil {
+	if err := h.renderTemplate(w, r, "landing", data); err != nil {
 		h.logger.Printf("Error rendering landing template: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -65,7 +66,7 @@ func (h *Handlers) About(w http.ResponseWriter, r *http.Request) {
 		Version: version.GetVersion(),
 	}
 
-	if err := h.renderTemplate(w, "about", data); err != nil {
+	if err := h.renderTemplate(w, r, "about", data); err != nil {
 		h.logger.Printf("Error rendering about template: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -108,7 +109,7 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 		Status:  status,
 	}
 
-	if err := h.renderTemplate(w, "dashboard", data); err != nil {
+	if err := h.renderTemplate(w, r, "dashboard", data); err != nil {
 		h.logger.Printf("Error rendering dashboard template: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -135,7 +136,7 @@ func (h *Handlers) Archive(w http.ResponseWriter, r *http.Request) {
 		HasActiveOperation: status != nil && status.HasActiveOperation(),
 	}
 
-	if err := h.renderTemplate(w, "archive", data); err != nil {
+	if err := h.renderTemplate(w, r, "archive", data); err != nil {
 		h.logger.Printf("Error rendering archive template: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -361,13 +362,13 @@ func (h *Handlers) Browse(w http.ResponseWriter, r *http.Request) {
 		ShowAll:              showAll,
 	}
 
-	if err := h.renderTemplate(w, "browse", data); err != nil {
+	if err := h.renderTemplate(w, r, "browse", data); err != nil {
 		h.logger.Printf("Error rendering browse template: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
 
-// ServeMedia serves archived media files
+// ServeMedia serves archived media files with path traversal protection
 func (h *Handlers) ServeMedia(w http.ResponseWriter, r *http.Request) {
 	session, ok := auth.GetSessionFromContext(r.Context())
 	if !ok || session == nil {
@@ -389,11 +390,49 @@ func (h *Handlers) ServeMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Open and serve the file
-	http.ServeFile(w, r, media.FilePath)
+	// Validate the file path to prevent path traversal
+	// Get absolute path of the media file
+	absMediaPath, err := filepath.Abs(media.FilePath)
+	if err != nil {
+		h.logger.Printf("Security: Failed to resolve media path: %v", err)
+		http.NotFound(w, r)
+		return
+	}
+
+	// Get the expected media directory (typically "media/" from project root)
+	mediaDir := "media"
+	absMediaDir, err := filepath.Abs(mediaDir)
+	if err != nil {
+		h.logger.Printf("Security: Failed to resolve media directory: %v", err)
+		http.NotFound(w, r)
+		return
+	}
+
+	// Verify the resolved path is within the media directory (path traversal protection)
+	if !strings.HasPrefix(absMediaPath, absMediaDir+string(filepath.Separator)) &&
+		absMediaPath != absMediaDir {
+		h.logger.Printf("Security: Path traversal attempt blocked in media - requested: %s, resolved: %s", media.FilePath, absMediaPath)
+		http.NotFound(w, r)
+		return
+	}
+
+	// Verify file exists and is not a directory
+	fileInfo, err := os.Stat(absMediaPath)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if fileInfo.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Serve the file
+	http.ServeFile(w, r, absMediaPath)
 }
 
-// ServeStatic serves static files
+// ServeStatic serves static files with path traversal protection
 func (h *Handlers) ServeStatic(w http.ResponseWriter, r *http.Request) {
 	// Remove /static prefix
 	path := strings.TrimPrefix(r.URL.Path, "/static/")
@@ -402,9 +441,50 @@ func (h *Handlers) ServeStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serve from internal/web/static
-	fullPath := filepath.Join("internal", "web", "static", filepath.Clean(path))
-	http.ServeFile(w, r, fullPath)
+	// Clean the path to remove any path traversal attempts
+	cleanPath := filepath.Clean(path)
+
+	// Build full path from static directory
+	staticDir := filepath.Join("internal", "web", "static")
+	fullPath := filepath.Join(staticDir, cleanPath)
+
+	// Get absolute paths for validation
+	absStaticDir, err := filepath.Abs(staticDir)
+	if err != nil {
+		h.logger.Printf("Security: Failed to resolve static directory: %v", err)
+		http.NotFound(w, r)
+		return
+	}
+
+	absFullPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		h.logger.Printf("Security: Failed to resolve requested path: %v", err)
+		http.NotFound(w, r)
+		return
+	}
+
+	// Verify the resolved path is within the static directory (path traversal protection)
+	if !strings.HasPrefix(absFullPath, absStaticDir+string(filepath.Separator)) &&
+		absFullPath != absStaticDir {
+		h.logger.Printf("Security: Path traversal attempt blocked - requested: %s, resolved: %s", path, absFullPath)
+		http.NotFound(w, r)
+		return
+	}
+
+	// Verify file exists and is not a directory
+	fileInfo, err := os.Stat(absFullPath)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if fileInfo.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Serve the file
+	http.ServeFile(w, r, absFullPath)
 }
 
 // NotFound renders the 404 error page
@@ -416,7 +496,7 @@ func (h *Handlers) NotFound(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNotFound)
-	if err := h.renderTemplate(w, "404", data); err != nil {
+	if err := h.renderTemplate(w, r, "404", data); err != nil {
 		h.logger.Printf("Error rendering 404 template: %v", err)
 		http.Error(w, "Not Found", http.StatusNotFound)
 	}

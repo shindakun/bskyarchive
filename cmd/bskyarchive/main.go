@@ -45,9 +45,40 @@ func main() {
 	defer db.Close()
 	logger.Println("Database initialized successfully")
 
-	// Initialize session manager
-	sessionManager := auth.InitSessions(cfg.OAuth.SessionSecret, db)
-	logger.Println("Session manager initialized")
+	// Initialize session manager with cookie security configuration
+	// Determine cookie Secure flag based on configuration and BASE_URL
+	cookieSecure := false
+	switch cfg.OAuth.CookieSecure {
+	case "true":
+		cookieSecure = true
+	case "auto":
+		cookieSecure = cfg.IsHTTPS()
+	case "false":
+		cookieSecure = false
+	}
+
+	// Parse SameSite mode
+	var sameSiteMode http.SameSite
+	switch cfg.OAuth.CookieSameSite {
+	case "strict":
+		sameSiteMode = http.SameSiteStrictMode
+	case "lax":
+		sameSiteMode = http.SameSiteLaxMode
+	case "none":
+		sameSiteMode = http.SameSiteNoneMode
+	default:
+		sameSiteMode = http.SameSiteLaxMode // Default to Lax for OAuth compatibility
+	}
+
+	sessionManager := auth.InitSessions(
+		cfg.OAuth.SessionSecret,
+		cfg.OAuth.SessionMaxAge,
+		cookieSecure,
+		sameSiteMode,
+		db,
+	)
+	logger.Printf("Session manager initialized (Secure=%v, SameSite=%v, MaxAge=%ds)",
+		cookieSecure, sameSiteMode, cfg.OAuth.SessionMaxAge)
 
 	// Initialize OAuth manager
 	baseURL := cfg.GetBaseURL()
@@ -61,9 +92,27 @@ func main() {
 	// Global middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	r.Use(webmiddleware.SecurityHeaders(cfg)) // Security headers on all responses
+	r.Use(webmiddleware.MaxBytesMiddleware(cfg.Server.Security.MaxRequestBytes)) // Request size limit
 	r.Use(webmiddleware.LoggingMiddleware(logger))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
+
+	logger.Printf("Security headers enabled (HSTS=%v)", cfg.IsHTTPS())
+	logger.Printf("Request size limit: %d bytes (%.1f MB)", cfg.Server.Security.MaxRequestBytes, float64(cfg.Server.Security.MaxRequestBytes)/(1024*1024))
+
+	// CSRF protection (if enabled)
+	if cfg.Server.Security.CSRFEnabled {
+		csrfMiddleware := webmiddleware.CSRFProtection(
+			[]byte(cfg.OAuth.SessionSecret),
+			cookieSecure, // Same secure setting as cookies
+		)
+		r.Use(csrfMiddleware)
+		logger.Printf("CSRF protection enabled (Secure=%v, FieldName=%s)",
+			cookieSecure, cfg.Server.Security.CSRFFieldName)
+	} else {
+		logger.Println("WARNING: CSRF protection is DISABLED")
+	}
 
 	// Initialize archiver worker with OAuth manager for bskyoauth session access
 	worker := archiver.NewWorker(db, cfg.Archive.MediaPath, 300, 5*time.Minute, oauthManager)
@@ -83,7 +132,7 @@ func main() {
 
 	// Auth routes
 	r.Route("/auth", func(r chi.Router) {
-		r.HandleFunc("/login", h.Login)
+		r.HandleFunc("/login", h.Login) // OAuth login - handles GET (form) and POST (handle submission), exempt from CSRF
 		r.Get("/logout", h.Logout)
 	})
 

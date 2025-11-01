@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gorilla/csrf"
 	"github.com/shindakun/bskyarchive/internal/models"
 )
 
@@ -27,6 +28,7 @@ type TemplateData struct {
 	HasActiveOperation bool
 	ShowAll bool // Show all posts from all users
 	Version string // Application version
+	CSRFToken string // CSRF token for forms and HTMX requests
 }
 
 // templateFuncs returns custom template functions
@@ -74,7 +76,10 @@ func templateFuncs() template.FuncMap {
 }
 
 // renderTemplate renders a template with the base layout
-func (h *Handlers) renderTemplate(w http.ResponseWriter, templateName string, data TemplateData) error {
+func (h *Handlers) renderTemplate(w http.ResponseWriter, r *http.Request, templateName string, data TemplateData) error {
+	// Add CSRF token to template data
+	data.CSRFToken = csrf.Token(r)
+
 	// Parse templates with functions - include partials for templates that need them
 	files := []string{
 		filepath.Join("internal", "web", "templates", "layouts", "base.html"),
