@@ -8,6 +8,74 @@ A local-first archival solution for Bluesky. Archive and search your Bluesky con
 - **Full-text search**: Find any post instantly with SQLite FTS5
 - **Complete archive**: Posts, media, profiles, and engagement metrics
 - **Fast & efficient**: Incremental updates and rate-limited operations
+- **Export your data**: Export to JSON or CSV formats with optional media files and date filtering
+
+## Export Your Archive
+
+Export your archived posts to portable formats for backup, analysis, or migration.
+
+### Supported Formats
+
+**JSON Export** (Complete metadata)
+- Full post data with all metadata, engagement metrics, and relationships
+- Preserves nested structures (embeds, replies, quotes)
+- Includes `manifest.json` with export metadata
+- Best for: Complete backups, data portability, programmatic access
+
+**CSV Export** (Spreadsheet-compatible)
+- RFC 4180 compliant format with UTF-8 BOM for Excel compatibility
+- 15 columns: URI, CID, DID, Text, CreatedAt, engagement metrics, reply data, media info
+- Media hashes as semicolon-separated list
+- Best for: Spreadsheet analysis, Excel/Google Sheets, data visualization
+
+### Export Options
+
+**Media Files** (optional)
+- Copies media files to `/media` subdirectory in export
+- Organized by content hash for deduplication
+- Includes images from posts, link previews, and quoted posts
+
+**Date Range Filtering** (optional)
+- Filter posts by creation date
+- Supports start date, end date, or both
+- Useful for exporting specific time periods
+
+### Using the Export Feature
+
+1. Navigate to the **Export** page in the web interface
+2. Choose your format (JSON or CSV)
+3. Select whether to include media files
+4. Optionally set a date range filter
+5. Click "Start Export"
+6. Monitor progress in real-time
+7. Find your export in `./exports/YYYY-MM-DD_HH-MM-SS/`
+
+### Export Directory Structure
+
+```
+exports/
+└── 2025-01-31_14-30-00/
+    ├── manifest.json       # Export metadata
+    ├── posts.json         # (JSON format) or posts.csv (CSV format)
+    └── media/             # (if media included)
+        ├── bafkreiabc123.jpeg
+        └── bafkreixyz789.png
+```
+
+### Troubleshooting
+
+**"An export is already in progress"**
+- Only one export can run at a time per user
+- Wait for the current export to complete before starting a new one
+
+**"No posts found in your archive"**
+- Archive some posts first by syncing your Bluesky account
+- Check your date range filter - you may need to adjust or remove it
+
+**Missing media files**
+- Media files that weren't downloaded during archival will be skipped
+- Check the logs for warnings about missing files
+- The export will still complete successfully with available media
 
 ## Requirements
 
@@ -181,7 +249,7 @@ Follow standard Go conventions. Use `gofmt` for formatting.
 
 1. **Data Privacy & Local-First**: All data stays on your machine
 2. **Comprehensive & Accurate**: Complete archive of your content
-3. **Multiple Export Formats**: JSON, CSV, and more (coming soon)
+3. **Multiple Export Formats**: JSON and CSV exports with media and date filtering
 4. **Fast & Efficient**: Full-text search with SQLite FTS5
 5. **Incremental Operations**: Only fetch new content on updates
 

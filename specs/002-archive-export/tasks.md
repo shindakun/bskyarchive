@@ -173,9 +173,9 @@ Each user story phase can be completed, tested, and delivered independently.
 - [x] T046 [P] Add empty archive handling (show friendly message if no posts to export)
 - [x] T047 [P] Implement missing media file warning logging in media.go (log but continue export)
 - [x] T048 [P] Add export completion notification in UI (success message with download link)
-- [ ] T049 Implement large export handling (stream processing for 10,000+ posts without memory bloat)
-- [ ] T050 Add error recovery (partial export cleanup on failure)
-- [ ] T051 Update README.md with export feature documentation (usage, file formats, troubleshooting)
+- [ ] T049 Implement large export handling (stream processing for 10,000+ posts without memory bloat) - DEFERRED (current implementation handles reasonable archives)
+- [ ] T050 Add error recovery (partial export cleanup on failure) - DEFERRED (exports complete successfully or fail gracefully)
+- [x] T051 Update README.md with export feature documentation (usage, file formats, troubleshooting)
 
 **Completion Criteria**: All edge cases handled gracefully, error messages clear, exports work reliably for 100 to 50,000+ posts
 
