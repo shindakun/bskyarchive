@@ -215,6 +215,12 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("failed to run incremental migrations: %w", err)
 	}
 
+	// Invalidate all existing sessions on startup
+	// This ensures clean state after app restarts and prevents issues with stale sessions
+	if err := invalidateAllSessions(db); err != nil {
+		return fmt.Errorf("failed to invalidate sessions: %w", err)
+	}
+
 	return nil
 }
 
@@ -260,6 +266,26 @@ func runIncrementalMigrations(db *sql.DB) error {
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("failed to commit migration 2: %w", err)
 		}
+	}
+
+	return nil
+}
+
+// invalidateAllSessions clears all sessions on startup
+// This ensures a clean state and prevents issues with stale sessions after restarts
+func invalidateAllSessions(db *sql.DB) error {
+	result, err := db.Exec("DELETE FROM sessions")
+	if err != nil {
+		return fmt.Errorf("failed to delete sessions: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows > 0 {
+		fmt.Printf("Invalidated %d existing session(s) on startup\n", rows)
 	}
 
 	return nil

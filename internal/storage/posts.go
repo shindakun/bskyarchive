@@ -190,3 +190,92 @@ func ListPosts(db *sql.DB, did string, limit, offset int) (*models.PagedPostsRes
 		TotalPages: totalPages,
 	}, nil
 }
+
+// ListPostsWithDateRange retrieves posts with optional date range filtering
+// If dateRange is nil, behaves like ListPosts
+func ListPostsWithDateRange(db *sql.DB, did string, dateRange *models.DateRange, limit, offset int) ([]models.Post, error) {
+	if limit <= 0 {
+		limit = 1000 // Default for exports (larger than browse pagination)
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Build query with date range filters
+	var query string
+	var args []interface{}
+
+	selectClause := `
+		SELECT uri, cid, did, text, created_at, indexed_at,
+			   has_media, like_count, repost_count, reply_count, quote_count,
+			   is_reply, reply_parent, embed_type, embed_data, labels, archived_at
+		FROM posts
+	`
+
+	whereConditions := []string{}
+
+	if did != "" {
+		whereConditions = append(whereConditions, "did = ?")
+		args = append(args, did)
+	}
+
+	if dateRange != nil {
+		if !dateRange.StartDate.IsZero() {
+			whereConditions = append(whereConditions, "created_at >= ?")
+			args = append(args, dateRange.StartDate)
+		}
+		if !dateRange.EndDate.IsZero() {
+			whereConditions = append(whereConditions, "created_at <= ?")
+			args = append(args, dateRange.EndDate)
+		}
+	}
+
+	if len(whereConditions) > 0 {
+		query = selectClause + " WHERE " + whereConditions[0]
+		for i := 1; i < len(whereConditions); i++ {
+			query += " AND " + whereConditions[i]
+		}
+	} else {
+		query = selectClause
+	}
+
+	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list posts with date range: %w", err)
+	}
+	defer rows.Close()
+
+	var posts []models.Post
+	for rows.Next() {
+		var post models.Post
+		var embedData, labels []byte
+
+		err := rows.Scan(
+			&post.URI, &post.CID, &post.DID, &post.Text, &post.CreatedAt, &post.IndexedAt,
+			&post.HasMedia, &post.LikeCount, &post.RepostCount, &post.ReplyCount, &post.QuoteCount,
+			&post.IsReply, &post.ReplyParent, &post.EmbedType, &embedData, &labels, &post.ArchivedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan post: %w", err)
+		}
+
+		// Deserialize JSON fields
+		if len(embedData) > 0 {
+			post.EmbedData = json.RawMessage(embedData)
+		}
+		if len(labels) > 0 {
+			post.Labels = json.RawMessage(labels)
+		}
+
+		posts = append(posts, post)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating posts: %w", err)
+	}
+
+	return posts, nil
+}

@@ -95,6 +95,9 @@ func main() {
 		r.Post("/archive/start", h.ArchiveStart)
 		r.Get("/archive/status", h.ArchiveStatus)
 		r.Get("/browse", h.Browse)
+		r.Get("/export", h.ExportPage)
+		r.Post("/export/start", h.StartExport)
+		r.Get("/export/progress/{job_id}", h.ExportProgress)
 		r.Get("/media/{hash}", h.ServeMedia)
 	})
 
