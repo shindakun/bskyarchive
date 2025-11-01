@@ -41,6 +41,14 @@
     <article>
         <header><strong>Export Options</strong></header>
 
+        <!-- Dynamic error display for client-side validation errors -->
+        <div id="export-error" style="display: none;">
+            <article aria-label="Error" style="background-color: var(--del-color); border-left: 4px solid #dc3545;">
+                <header><strong>Error</strong></header>
+                <p id="export-error-message"></p>
+            </article>
+        </div>
+
         <form id="export-form" hx-post="/export/start" hx-swap="none" hx-on::after-request="handleExportStart(event)">
             <!-- Format Selection -->
             <fieldset>
@@ -115,6 +123,10 @@
     let pollInterval = null;
 
     function handleExportStart(event) {
+        // Hide any previous errors
+        const errorDiv = document.getElementById('export-error');
+        errorDiv.style.display = 'none';
+
         if (event.detail.successful) {
             try {
                 const response = JSON.parse(event.detail.xhr.responseText);
@@ -140,10 +152,32 @@
                 startProgressPolling(jobID);
             } catch (e) {
                 console.error('Failed to parse export response:', e);
+                showError('Failed to parse server response. Please try again.');
             }
         } else {
-            alert('Failed to start export. Please try again.');
+            // Extract error message from response
+            let errorMessage = 'Failed to start export. Please try again.';
+            try {
+                const responseText = event.detail.xhr.responseText;
+                // The error is plain text from http.Error()
+                if (responseText && responseText.trim() !== '') {
+                    errorMessage = responseText.trim();
+                }
+            } catch (e) {
+                console.error('Failed to parse error response:', e);
+            }
+            showError(errorMessage);
         }
+    }
+
+    function showError(message) {
+        const errorDiv = document.getElementById('export-error');
+        const errorMessage = document.getElementById('export-error-message');
+        errorMessage.textContent = message;
+        errorDiv.style.display = 'block';
+
+        // Scroll to error message
+        errorDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     function startProgressPolling(jobID) {
