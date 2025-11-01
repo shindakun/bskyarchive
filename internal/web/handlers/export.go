@@ -62,6 +62,8 @@ func (h *Handlers) StartExport(w http.ResponseWriter, r *http.Request) {
 
 	format := r.FormValue("format")
 	includeMedia := r.FormValue("include_media") == "true"
+	startDateStr := r.FormValue("start_date")
+	endDateStr := r.FormValue("end_date")
 
 	// Validate format
 	var exportFormat models.ExportFormat
@@ -71,13 +73,70 @@ func (h *Handlers) StartExport(w http.ResponseWriter, r *http.Request) {
 		exportFormat = models.ExportFormatJSON // default
 	}
 
+	// Parse and validate date range
+	var dateRange *models.DateRange
+	if startDateStr != "" || endDateStr != "" {
+		// Parse dates
+		var startDate, endDate time.Time
+		var err error
+
+		if startDateStr != "" {
+			startDate, err = time.Parse("2006-01-02", startDateStr)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Invalid start date format: %v", err), http.StatusBadRequest)
+				return
+			}
+		}
+
+		if endDateStr != "" {
+			endDate, err = time.Parse("2006-01-02", endDateStr)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Invalid end date format: %v", err), http.StatusBadRequest)
+				return
+			}
+			// Set to end of day
+			endDate = endDate.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+		}
+
+		// Validate date range
+		if !startDate.IsZero() && !endDate.IsZero() {
+			if endDate.Before(startDate) {
+				http.Error(w, "End date must be after start date", http.StatusBadRequest)
+				return
+			}
+		}
+
+		// Check for future dates
+		now := time.Now()
+		if !startDate.IsZero() && startDate.After(now) {
+			http.Error(w, "Start date cannot be in the future", http.StatusBadRequest)
+			return
+		}
+		if !endDate.IsZero() && endDate.After(now) {
+			http.Error(w, "End date cannot be in the future", http.StatusBadRequest)
+			return
+		}
+
+		// Create date range
+		dateRange = &models.DateRange{
+			StartDate: startDate,
+			EndDate:   endDate,
+		}
+
+		// Validate using model's Validate method
+		if err := dateRange.Validate(); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid date range: %v", err), http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Create export options
 	opts := models.ExportOptions{
 		Format:       exportFormat,
 		OutputDir:    "./exports",
 		IncludeMedia: includeMedia,
 		DID:          session.DID,
-		DateRange:    nil, // Phase 5 will add date range support
+		DateRange:    dateRange,
 	}
 
 	// Validate options

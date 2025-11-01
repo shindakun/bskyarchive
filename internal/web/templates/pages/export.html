@@ -65,9 +65,9 @@
                 <small>Media files will be copied to a /media subdirectory</small>
             </fieldset>
 
-            <!-- Date Range Filtering (Phase 5 - Disabled for now) -->
-            <fieldset disabled>
-                <legend>Date Range (Coming Soon in Phase 5)</legend>
+            <!-- Date Range Filtering (Optional) -->
+            <fieldset>
+                <legend>Date Range (Optional)</legend>
                 <label>
                     Start Date
                     <input type="date" name="start_date" placeholder="YYYY-MM-DD">
@@ -76,7 +76,7 @@
                     End Date
                     <input type="date" name="end_date" placeholder="YYYY-MM-DD">
                 </label>
-                <small>Leave blank to export all posts</small>
+                <small>Leave blank to export all posts. Only posts within the date range will be exported.</small>
             </fieldset>
 
             <button type="submit">Start Export</button>
