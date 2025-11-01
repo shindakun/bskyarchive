@@ -1,0 +1,188 @@
+{{define "title"}}Export Archive - Bluesky Archive{{end}}
+
+{{define "nav"}}
+<nav class="container">
+    <ul>
+        <li><strong>Bluesky Archive</strong></li>
+    </ul>
+    <ul>
+        <li><a href="/dashboard">Dashboard</a></li>
+        <li><a href="/archive">Archive</a></li>
+        <li><a href="/browse">Browse</a></li>
+        <li><a href="/export">Export</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a href="/auth/logout">Logout</a></li>
+    </ul>
+</nav>
+{{end}}
+
+{{define "content"}}
+<section>
+    <hgroup>
+        <h1>Export Archive</h1>
+        <h2>Export your archived posts to JSON or CSV format</h2>
+    </hgroup>
+
+    {{if .Error}}
+    <article aria-label="Error">
+        <header><strong>Error</strong></header>
+        <p>{{.Error}}</p>
+    </article>
+    {{end}}
+
+    {{if .Message}}
+    <article aria-label="Success">
+        <header><strong>Success</strong></header>
+        <p>{{.Message}}</p>
+    </article>
+    {{end}}
+
+    <!-- Export Form -->
+    <article>
+        <header><strong>Export Options</strong></header>
+
+        <form id="export-form" hx-post="/export/start" hx-swap="none" hx-on::after-request="handleExportStart(event)">
+            <!-- Format Selection -->
+            <fieldset>
+                <legend>Export Format</legend>
+                <label>
+                    <input type="radio" name="format" value="json" checked>
+                    JSON - Complete metadata with nested structures
+                </label>
+                <label>
+                    <input type="radio" name="format" value="csv">
+                    CSV - Spreadsheet-compatible format for Excel and Google Sheets
+                </label>
+            </fieldset>
+
+            <!-- Media Options -->
+            <fieldset>
+                <legend>Media Files</legend>
+                <label>
+                    <input type="checkbox" name="include_media" value="true" checked>
+                    Include media files in export
+                </label>
+                <small>Media files will be copied to a /media subdirectory</small>
+            </fieldset>
+
+            <!-- Date Range Filtering (Phase 5 - Disabled for now) -->
+            <fieldset disabled>
+                <legend>Date Range (Coming Soon in Phase 5)</legend>
+                <label>
+                    Start Date
+                    <input type="date" name="start_date" placeholder="YYYY-MM-DD">
+                </label>
+                <label>
+                    End Date
+                    <input type="date" name="end_date" placeholder="YYYY-MM-DD">
+                </label>
+                <small>Leave blank to export all posts</small>
+            </fieldset>
+
+            <button type="submit">Start Export</button>
+        </form>
+    </article>
+
+    <!-- Progress Display (initially hidden) -->
+    <article id="export-progress" style="display: none;">
+        <header><strong>Export Progress</strong></header>
+        <div id="progress-content">
+            <p>Initializing export...</p>
+            <progress value="0" max="100"></progress>
+        </div>
+    </article>
+
+    <!-- Export History -->
+    {{if .Status}}
+    {{if gt .Status.TotalPosts 0}}
+    <article>
+        <header><strong>Export Information</strong></header>
+        <dl>
+            <dt>Total Posts Available</dt>
+            <dd>{{.Status.TotalPosts}}</dd>
+            <dt>Total Media Files</dt>
+            <dd>{{.Status.TotalMedia}}</dd>
+            <dt>Estimated Export Size</dt>
+            <dd>~{{.Status.TotalMedia}} MB (with media)</dd>
+        </dl>
+        <small>Exports are saved to the <code>./exports/</code> directory with timestamp-based folder names</small>
+    </article>
+    {{end}}
+    {{end}}
+</section>
+
+<script>
+    let pollInterval = null;
+
+    function handleExportStart(event) {
+        if (event.detail.successful) {
+            try {
+                const response = JSON.parse(event.detail.xhr.responseText);
+                const jobID = response.job_id;
+                const message = response.message || 'Export started successfully';
+
+                // Show progress section
+                const progressSection = document.getElementById('export-progress');
+                const progressContent = document.getElementById('progress-content');
+                progressSection.style.display = 'block';
+
+                // Show initial message
+                progressContent.innerHTML = `
+                    <p><strong>${message}</strong></p>
+                    <p>Preparing export...</p>
+                    <progress value="0" max="100"></progress>
+                `;
+
+                // Disable form during export
+                document.getElementById('export-form').querySelectorAll('input, button').forEach(el => el.disabled = true);
+
+                // Start polling for progress
+                startProgressPolling(jobID);
+            } catch (e) {
+                console.error('Failed to parse export response:', e);
+            }
+        } else {
+            alert('Failed to start export. Please try again.');
+        }
+    }
+
+    function startProgressPolling(jobID) {
+        // Clear any existing interval
+        if (pollInterval) {
+            clearInterval(pollInterval);
+        }
+
+        // Poll every 2 seconds
+        pollInterval = setInterval(() => {
+            fetch('/export/progress/' + jobID, {
+                headers: {
+                    'HX-Request': 'true'
+                }
+            })
+            .then(response => response.text())
+            .then(html => {
+                const progressContent = document.getElementById('progress-content');
+                progressContent.innerHTML = html;
+
+                // Check if export is complete or failed
+                if (html.includes('Export completed successfully') || html.includes('Export failed')) {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                    // Re-enable form
+                    document.getElementById('export-form').querySelectorAll('input, button').forEach(el => el.disabled = false);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching progress:', error);
+            });
+        }, 2000);
+    }
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+        }
+    });
+</script>
+{{end}}
