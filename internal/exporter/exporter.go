@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +19,10 @@ import (
 // Returns the full path to the created directory
 // The directory structure is: baseDir/{did}/{timestamp}
 func CreateExportDirectory(baseDir string, did string) (string, error) {
+	// Preserve ./ prefix for relative paths
+	// filepath.Join normalizes paths and can strip ./ prefix
+	preserveDotSlash := strings.HasPrefix(baseDir, "./")
+
 	// Create per-user subdirectory structure
 	userDir := filepath.Join(baseDir, did)
 	if err := os.MkdirAll(userDir, 0755); err != nil {
@@ -31,6 +36,11 @@ func CreateExportDirectory(baseDir string, did string) (string, error) {
 	// Create the timestamped directory with read/write/execute for owner, read/execute for group and others
 	if err := os.MkdirAll(exportDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create export directory: %w", err)
+	}
+
+	// Restore ./ prefix if it was present in baseDir and got stripped by filepath.Join
+	if preserveDotSlash && !strings.HasPrefix(exportDir, "./") && !filepath.IsAbs(exportDir) {
+		exportDir = "./" + exportDir
 	}
 
 	return exportDir, nil
@@ -261,6 +271,46 @@ func Run(db *sql.DB, job *models.ExportJob, progressChan chan<- models.ExportPro
 	if err := WriteManifest(manifestPath, manifest); err != nil {
 		log.Printf("Warning: failed to write manifest: %v", err)
 		// Don't fail the export for manifest errors
+	}
+
+	// Step 5.5: Calculate total export size and track in database
+	var totalSize int64
+	filepath.Walk(exportDir, func(_ string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			totalSize += info.Size()
+		}
+		return nil
+	})
+
+	// Create export record for tracking
+	exportRecord := &models.ExportRecord{
+		ID:            fmt.Sprintf("%s/%s", job.Options.DID, filepath.Base(exportDir)),
+		DID:           job.Options.DID,
+		Format:        string(job.Options.Format),
+		CreatedAt:     job.CreatedAt,
+		DirectoryPath: exportDir,
+		PostCount:     totalPosts,
+		MediaCount:    job.Progress.MediaCopied,
+		SizeBytes:     totalSize,
+		ManifestPath:  manifestPath,
+	}
+
+	if job.Options.DateRange != nil {
+		if !job.Options.DateRange.StartDate.IsZero() {
+			exportRecord.DateRangeStart = &job.Options.DateRange.StartDate
+		}
+		if !job.Options.DateRange.EndDate.IsZero() {
+			exportRecord.DateRangeEnd = &job.Options.DateRange.EndDate
+		}
+	}
+
+	// Save export record to database
+	if err := storage.CreateExportRecord(db, exportRecord); err != nil {
+		log.Printf("Warning: Failed to save export record to database: %v", err)
+		// Don't fail the export - this is metadata only
+		// User can still use the export, just won't see it in the list
+	} else {
+		log.Printf("Export record saved to database: %s (size: %d bytes)", exportRecord.ID, totalSize)
 	}
 
 	// Step 6: Mark as complete

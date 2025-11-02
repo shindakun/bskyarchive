@@ -119,6 +119,77 @@
     </article>
     {{end}}
     {{end}}
+
+    <!-- Completed Exports List -->
+    <article id="exports-section">
+        <header><strong>Your Exports</strong></header>
+
+        {{if .Exports}}
+        <figure id="exports-table-container">
+            <table role="grid">
+                <thead>
+                    <tr>
+                        <th>Created</th>
+                        <th>Format</th>
+                        <th>Date Range</th>
+                        <th>Posts</th>
+                        <th>Media</th>
+                        <th>Size</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="exports-tbody">
+                    {{range .Exports}}
+                    <tr>
+                        <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+                        <td>{{.Format}}</td>
+                        <td>{{.DateRangeString}}</td>
+                        <td>{{.PostCount}}</td>
+                        <td>{{.MediaCount}}</td>
+                        <td>{{.HumanSize}}</td>
+                        <td>
+                            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <a href="/export/download/{{.ID}}"
+                                       role="button"
+                                       class="secondary download-btn"
+                                       style="margin: 0; flex: 1;"
+                                       data-export-id="{{.ID}}">
+                                        Download ZIP
+                                    </a>
+                                    <button type="button"
+                                            class="outline"
+                                            style="margin: 0;"
+                                            hx-delete="/export/delete/{{.ID}}"
+                                            hx-confirm="Are you sure you want to delete this export? This action cannot be undone."
+                                            hx-target="closest tr"
+                                            hx-swap="outerHTML"
+                                            hx-headers='{"X-CSRF-Token": "{{$.CSRFToken}}"}'>
+                                        Delete
+                                    </button>
+                                </div>
+                                <label style="margin: 0; font-size: 0.875rem;">
+                                    <input type="checkbox"
+                                           class="delete-after-checkbox"
+                                           data-export-id="{{.ID}}"
+                                           style="margin-right: 0.25rem;">
+                                    Delete after download
+                                </label>
+                            </div>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </figure>
+
+        <small>Click "Download ZIP" to download an export as a compressed archive. Click "Delete" to permanently remove an export from the server. Exports can be downloaded multiple times before deletion.</small>
+        {{else}}
+        <div id="no-exports-message">
+            <p>No exports yet. Create your first export using the form above!</p>
+        </div>
+        {{end}}
+    </article>
 </section>
 
 <script>
@@ -201,7 +272,91 @@
                 progressContent.innerHTML = html;
 
                 // Check if export is complete or failed
-                if (html.includes('Export completed successfully') || html.includes('Export failed')) {
+                if (html.includes('Export completed successfully')) {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                    // Re-enable form
+                    document.getElementById('export-form').querySelectorAll('input, button').forEach(el => el.disabled = false);
+
+                    // Extract export ID from the response (it's in a data attribute)
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const exportIdElement = doc.querySelector('[data-export-id]');
+
+                    if (exportIdElement) {
+                        const exportID = exportIdElement.getAttribute('data-export-id');
+
+                        // Fetch the new export row and prepend it to the table
+                        fetch('/export/row/' + exportID, {
+                            headers: {
+                                'HX-Request': 'true'
+                            }
+                        })
+                        .then(response => response.text())
+                        .then(rowHtml => {
+                            let tbody = document.getElementById('exports-tbody');
+
+                            // Check if this is the first export (no table exists yet)
+                            if (!tbody) {
+                                // Remove "No exports yet" message
+                                const noExportsMessage = document.getElementById('no-exports-message');
+                                if (noExportsMessage) {
+                                    noExportsMessage.remove();
+                                }
+
+                                // Create the table structure
+                                const exportsSection = document.getElementById('exports-section');
+                                const tableHtml = `
+                                    <figure id="exports-table-container">
+                                        <table role="grid">
+                                            <thead>
+                                                <tr>
+                                                    <th>Created</th>
+                                                    <th>Format</th>
+                                                    <th>Date Range</th>
+                                                    <th>Posts</th>
+                                                    <th>Media</th>
+                                                    <th>Size</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="exports-tbody"></tbody>
+                                        </table>
+                                    </figure>
+                                    <small>Click "Download ZIP" to download an export as a compressed archive. Click "Delete" to permanently remove an export from the server. Exports can be downloaded multiple times before deletion.</small>
+                                `;
+
+                                // Insert table after the header
+                                const header = exportsSection.querySelector('header');
+                                header.insertAdjacentHTML('afterend', tableHtml);
+                                tbody = document.getElementById('exports-tbody');
+                            }
+
+                            if (tbody) {
+                                // Create a temporary element to parse the HTML
+                                const temp = document.createElement('tbody');
+                                temp.innerHTML = rowHtml;
+                                const newRow = temp.firstElementChild;
+
+                                // Prepend the new row (newest first)
+                                tbody.insertBefore(newRow, tbody.firstChild);
+
+                                // Re-attach event listeners for the new row
+                                attachDownloadButtonListeners();
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching new export row:', error);
+                            // Fallback to page reload if fetch fails
+                            window.location.reload();
+                        });
+                    } else {
+                        // Fallback: reload page if we can't find the export ID
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    }
+                } else if (html.includes('Export failed')) {
                     clearInterval(pollInterval);
                     pollInterval = null;
                     // Re-enable form
@@ -213,6 +368,54 @@
             });
         }, 2000);
     }
+
+    // Function to attach event listeners to download buttons
+    function attachDownloadButtonListeners() {
+        // Remove old listener if it exists to avoid duplicates
+        // (We'll use event delegation instead)
+    }
+
+    // Handle "Delete after download" checkbox (T046 & T047)
+    // Using event delegation to handle dynamically added rows
+    document.addEventListener('click', function(e) {
+        // Check if a download button was clicked
+        if (e.target.classList.contains('download-btn')) {
+            const exportId = e.target.getAttribute('data-export-id');
+            const checkbox = document.querySelector(`.delete-after-checkbox[data-export-id="${exportId}"]`);
+
+            if (checkbox && checkbox.checked) {
+                e.preventDefault();
+
+                // Show confirmation dialog (T047 - user feedback)
+                const confirmed = confirm(
+                    'This will download the export and immediately delete it from the server. ' +
+                    'This action cannot be undone. Continue?'
+                );
+
+                if (confirmed) {
+                    // Show visual feedback
+                    const originalText = e.target.textContent;
+                    e.target.textContent = 'Downloading & Deleting...';
+                    e.target.style.opacity = '0.6';
+
+                    // Add delete_after=true to URL and trigger download
+                    const url = e.target.href + '?delete_after=true';
+                    window.location.href = url;
+
+                    // Remove the row after a short delay (gives time for download to start)
+                    setTimeout(() => {
+                        const row = e.target.closest('tr');
+                        if (row) {
+                            row.style.transition = 'opacity 0.3s';
+                            row.style.opacity = '0';
+                            setTimeout(() => row.remove(), 300);
+                        }
+                    }, 2000);
+                }
+            }
+            // If checkbox is not checked, let the normal href navigation happen
+        }
+    });
 
     // Cleanup on page unload
     window.addEventListener('beforeunload', () => {

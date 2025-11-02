@@ -19,23 +19,19 @@ func CSRFProtection(secret []byte, secure bool) func(http.Handler) http.Handler 
 	)
 
 	// Wrap to exempt OAuth login path from CSRF validation
-	// Note: We apply the middleware to all requests (for cookie setting)
-	// but short-circuit validation for /auth/login POST requests
+	// The OAuth login form doesn't include CSRF tokens (simple HTML form)
 	return func(next http.Handler) http.Handler {
-		// Wrap the next handler with CSRF protection
-		csrfProtected := csrfMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// If this is a POST to /auth/login, skip CSRF validation
-			// (OAuth flow doesn't include CSRF token in the login form)
-			if r.Method == http.MethodPost && r.URL.Path == "/auth/login" {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Exempt /auth/login from CSRF validation entirely
+			// OAuth flow uses its own state parameter for protection
+			if r.URL.Path == "/auth/login" {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			// For all other requests, proceed with CSRF validation
-			next.ServeHTTP(w, r)
-		}))
-
-		return csrfProtected
+			// For all other requests, apply CSRF protection
+			csrfMiddleware(next).ServeHTTP(w, r)
+		})
 	}
 }
 

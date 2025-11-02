@@ -1,13 +1,17 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/csrf"
 	"github.com/shindakun/bskyarchive/internal/auth"
 	"github.com/shindakun/bskyarchive/internal/exporter"
 	"github.com/shindakun/bskyarchive/internal/models"
@@ -21,7 +25,15 @@ var (
 	exportJobsMu sync.RWMutex
 )
 
-// ExportPage renders the export management page
+// Download rate limiting state
+// Tracks concurrent downloads per DID to prevent resource exhaustion
+var (
+	activeDownloads   = make(map[string]int) // DID -> count
+	activeDownloadsMu sync.RWMutex
+	maxDownloadsPerUser = 10 // Maximum concurrent downloads per user
+)
+
+// ExportPage renders the export management page with list of user's exports
 func (h *Handlers) ExportPage(w http.ResponseWriter, r *http.Request) {
 	session, ok := auth.GetSessionFromContext(r.Context())
 	if !ok || session == nil {
@@ -35,9 +47,17 @@ func (h *Handlers) ExportPage(w http.ResponseWriter, r *http.Request) {
 		h.logger.Printf("Error getting archive status: %v", err)
 	}
 
+	// Get list of user's exports (most recent first, limit 50)
+	exports, err := storage.ListExportsByDID(h.db, session.DID, 50, 0)
+	if err != nil {
+		h.logger.Printf("Error listing exports: %v", err)
+		// Continue rendering page even if exports can't be loaded
+	}
+
 	data := TemplateData{
 		Session: session,
 		Status:  status,
+		Exports: exports, // Pass exports to template
 	}
 
 	if err := h.renderTemplate(w, r, "export", data); err != nil {
@@ -253,13 +273,21 @@ func (h *Handlers) ExportProgress(w http.ResponseWriter, r *http.Request) {
 				job.Progress.MediaCopied, job.Progress.MediaTotal)
 
 		case models.ExportStatusCompleted:
+			// Extract export ID from ExportDir (format: ./exports/did:plc:xxx/timestamp)
+			// The ID is: did:plc:xxx/timestamp
+			exportID := ""
+			if len(job.ExportDir) > len("./exports/") {
+				exportID = job.ExportDir[len("./exports/"):]
+			}
 			fmt.Fprintf(w, `
-				<p><strong>Export completed successfully!</strong></p>
-				<p>Posts exported: %d</p>
-				<p>Media files copied: %d</p>
-				<p>Export directory: <code>%s</code></p>
-				<a href="/dashboard" role="button">Return to Dashboard</a>
-			`, job.Progress.PostsTotal, job.Progress.MediaCopied, job.ExportDir)
+				<div data-export-id="%s">
+					<p><strong>Export completed successfully!</strong></p>
+					<p>Posts exported: %d</p>
+					<p>Media files copied: %d</p>
+					<p>Export directory: <code>%s</code></p>
+					<a href="/dashboard" role="button">Return to Dashboard</a>
+				</div>
+			`, exportID, job.Progress.PostsTotal, job.Progress.MediaCopied, job.ExportDir)
 
 		case models.ExportStatusFailed:
 			fmt.Fprintf(w, `
@@ -286,4 +314,264 @@ func (h *Handlers) ExportProgress(w http.ResponseWriter, r *http.Request) {
 		"percent_complete": job.Progress.PercentComplete(),
 		"error":           job.Progress.Error,
 	})
+}
+
+// ExportRow returns a single export as an HTML table row fragment for HTMX
+func (h *Handlers) ExportRow(w http.ResponseWriter, r *http.Request) {
+	session, ok := auth.GetSessionFromContext(r.Context())
+	if !ok || session == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get export ID from URL wildcard path
+	exportID := chi.URLParam(r, "*")
+	if exportID == "" {
+		http.Error(w, "Export ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Retrieve export record from database
+	exportRecord, err := storage.GetExportByID(h.db, exportID)
+	if err != nil {
+		http.Error(w, "Export not found", http.StatusNotFound)
+		return
+	}
+
+	// Verify ownership - users can only access their own exports
+	if exportRecord.DID != session.DID {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Get CSRF token for the delete button
+	csrfToken := csrf.Token(r)
+
+	// Return HTML table row
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `<tr>
+		<td>%s</td>
+		<td>%s</td>
+		<td>%s</td>
+		<td>%d</td>
+		<td>%d</td>
+		<td>%s</td>
+		<td>
+			<div style="display: flex; gap: 0.5rem;">
+				<a href="/export/download/%s" role="button" class="secondary" style="margin: 0; flex: 1;">
+					Download ZIP
+				</a>
+				<button type="button"
+						class="outline"
+						style="margin: 0;"
+						hx-delete="/export/delete/%s"
+						hx-confirm="Are you sure you want to delete this export? This action cannot be undone."
+						hx-target="closest tr"
+						hx-swap="outerHTML"
+						hx-headers='{"X-CSRF-Token": "%s"}'>
+					Delete
+				</button>
+			</div>
+		</td>
+	</tr>`,
+		exportRecord.CreatedAt.Format("2006-01-02 15:04"),
+		exportRecord.Format,
+		exportRecord.DateRangeString(),
+		exportRecord.PostCount,
+		exportRecord.MediaCount,
+		exportRecord.HumanSize(),
+		exportRecord.ID,
+		exportRecord.ID,
+		csrfToken,
+	)
+}
+
+// DownloadExport streams an export as a ZIP archive for download
+// Implements rate limiting, authentication, and ownership verification
+func (h *Handlers) DownloadExport(w http.ResponseWriter, r *http.Request) {
+	// Get session from context
+	session, ok := auth.GetSessionFromContext(r.Context())
+	if !ok || session == nil {
+		h.logger.Printf("Download attempt without authentication")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get export ID from URL wildcard path
+	// The wildcard captures everything after /export/download/
+	// For example: /export/download/did:plc:xxx/timestamp -> "did:plc:xxx/timestamp"
+	exportID := chi.URLParam(r, "*")
+	if exportID == "" {
+		h.logger.Printf("Download attempt without export ID")
+		http.Error(w, "Export ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Retrieve export record from database
+	exportRecord, err := storage.GetExportByID(h.db, exportID)
+	if err != nil {
+		h.logger.Printf("Export not found: %s (error: %v)", exportID, err)
+		http.Error(w, "Export not found", http.StatusNotFound)
+		return
+	}
+
+	// Verify ownership - users can only download their own exports
+	if exportRecord.DID != session.DID {
+		h.logger.Printf("Security: Unauthorized download attempt - user %s attempted to download export %s owned by %s",
+			session.DID, exportID, exportRecord.DID)
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Check rate limit
+	activeDownloadsMu.Lock()
+	currentDownloads := activeDownloads[session.DID]
+	if currentDownloads >= maxDownloadsPerUser {
+		activeDownloadsMu.Unlock()
+		h.logger.Printf("Rate limit exceeded for user %s (%d concurrent downloads)",
+			session.DID, currentDownloads)
+		http.Error(w, "Too many concurrent downloads. Please wait for current downloads to complete.",
+			http.StatusTooManyRequests)
+		return
+	}
+	activeDownloads[session.DID]++
+	activeDownloadsMu.Unlock()
+
+	// Cleanup rate limit tracker when done
+	defer func() {
+		activeDownloadsMu.Lock()
+		activeDownloads[session.DID]--
+		if activeDownloads[session.DID] == 0 {
+			delete(activeDownloads, session.DID)
+		}
+		activeDownloadsMu.Unlock()
+	}()
+
+	// Verify export directory exists
+	if _, err := os.Stat(exportRecord.DirectoryPath); os.IsNotExist(err) {
+		h.logger.Printf("Export directory missing for %s: %s", exportID, exportRecord.DirectoryPath)
+		http.Error(w, "Export files not found", http.StatusNotFound)
+		return
+	}
+
+	// Set headers for ZIP download
+	filename := fmt.Sprintf("bskyarchive-%s.zip", exportRecord.Format)
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
+	// Check if user wants to delete export after download (T043)
+	deleteAfter := r.URL.Query().Get("delete_after") == "true"
+
+	// Log download start (audit logging - T020)
+	h.logger.Printf("Download started: user=%s export=%s format=%s size=%d delete_after=%v",
+		session.DID, exportID, exportRecord.Format, exportRecord.SizeBytes, deleteAfter)
+
+	// Stream the ZIP archive
+	if err := exporter.StreamDirectoryAsZIP(exportRecord.DirectoryPath, w); err != nil {
+		h.logger.Printf("Failed to stream export %s: %v", exportID, err)
+		// Can't send HTTP error after streaming starts, just log it
+		// IMPORTANT: Do NOT delete export if download failed (T042, T048)
+		return
+	}
+
+	// Log successful download (audit logging - T020)
+	h.logger.Printf("Download completed: user=%s export=%s size=%d",
+		session.DID, exportID, exportRecord.SizeBytes)
+
+	// Delete export after successful download if requested (T044)
+	if deleteAfter {
+		if err := deleteExportInternal(h.db, exportID); err != nil {
+			h.logger.Printf("Warning: Failed to delete export %s after download: %v", exportID, err)
+			// Don't fail the download - it completed successfully
+			// The export will remain and can be deleted manually
+		} else {
+			h.logger.Printf("Export deleted after download: user=%s export=%s",
+				session.DID, exportID)
+		}
+	}
+}
+
+// DeleteExport handles deletion of an export with authentication and ownership checks
+func (h *Handlers) DeleteExport(w http.ResponseWriter, r *http.Request) {
+	// Get session from context
+	session, ok := auth.GetSessionFromContext(r.Context())
+	if !ok || session == nil {
+		h.logger.Printf("Delete attempt without authentication")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get export ID from URL wildcard path
+	exportID := chi.URLParam(r, "*")
+	if exportID == "" {
+		h.logger.Printf("Delete attempt without export ID")
+		http.Error(w, "Export ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Retrieve export record from database
+	exportRecord, err := storage.GetExportByID(h.db, exportID)
+	if err != nil {
+		h.logger.Printf("Export not found for deletion: %s (error: %v)", exportID, err)
+		http.Error(w, "Export not found", http.StatusNotFound)
+		return
+	}
+
+	// Verify ownership - users can only delete their own exports
+	if exportRecord.DID != session.DID {
+		h.logger.Printf("Security: Unauthorized delete attempt - user %s attempted to delete export %s owned by %s",
+			session.DID, exportID, exportRecord.DID)
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Audit log: deletion started (T038)
+	h.logger.Printf("Delete started: user=%s export=%s size=%d",
+		session.DID, exportID, exportRecord.SizeBytes)
+
+	// Perform deletion
+	if err := deleteExportInternal(h.db, exportID); err != nil {
+		h.logger.Printf("Failed to delete export %s: %v", exportID, err)
+		http.Error(w, "Failed to delete export", http.StatusInternalServerError)
+		return
+	}
+
+	// Audit log: deletion completed (T038)
+	h.logger.Printf("Delete completed: user=%s export=%s",
+		session.DID, exportID)
+
+	// Return empty response with 200 OK for HTMX to remove the row
+	// HTMX needs a 200 response to perform the swap operation
+	w.WriteHeader(http.StatusOK)
+}
+
+// deleteExportInternal performs the actual deletion of export files and database record
+// This helper function allows for easier testing and potential reuse
+func deleteExportInternal(db *sql.DB, exportID string) error {
+	// Get export record to get directory path
+	exportRecord, err := storage.GetExportByID(db, exportID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve export record: %w", err)
+	}
+
+	// Delete directory and all contents
+	// RemoveAll handles non-existent paths gracefully (returns nil)
+	if exportRecord.DirectoryPath != "" {
+		if err := os.RemoveAll(exportRecord.DirectoryPath); err != nil {
+			// Log warning but continue with DB deletion
+			// This handles permission errors or concurrent deletions
+			log.Printf("Warning: Failed to delete export directory %s: %v",
+				exportRecord.DirectoryPath, err)
+		}
+	}
+
+	// Delete database record
+	if err := storage.DeleteExport(db, exportID); err != nil {
+		return fmt.Errorf("failed to delete export record: %w", err)
+	}
+
+	return nil
 }
