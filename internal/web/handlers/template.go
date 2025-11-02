@@ -20,6 +20,7 @@ type TemplateData struct {
 	Media   map[string][]models.Media // Map of post URI to media items
 	ParentPostsInArchive map[string]bool // Map of parent URIs that exist in local archive
 	Profiles map[string]string // Map of DID to handle
+	Exports []models.ExportRecord // List of exports for export management page
 	Query   string
 	Page    int
 	Total   int

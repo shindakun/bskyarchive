@@ -268,6 +268,72 @@ func runIncrementalMigrations(db *sql.DB) error {
 		}
 	}
 
+	// Migration 3: Add exports table for export download management
+	if currentVersion < 3 {
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction for migration 3: %w", err)
+		}
+		defer tx.Rollback()
+
+		// Check if table already exists (in case of partial migration)
+		var tableExists bool
+		err = tx.QueryRow(`
+			SELECT COUNT(*) > 0
+			FROM sqlite_master
+			WHERE type = 'table' AND name = 'exports'
+		`).Scan(&tableExists)
+		if err != nil {
+			return fmt.Errorf("failed to check if exports table exists: %w", err)
+		}
+
+		if !tableExists {
+			// Create exports table
+			if _, err := tx.Exec(`
+				CREATE TABLE IF NOT EXISTS exports (
+					id TEXT PRIMARY KEY,
+					did TEXT NOT NULL,
+					format TEXT NOT NULL,
+					created_at INTEGER NOT NULL,
+					directory_path TEXT NOT NULL,
+					post_count INTEGER NOT NULL,
+					media_count INTEGER DEFAULT 0,
+					size_bytes INTEGER DEFAULT 0,
+					date_range_start INTEGER,
+					date_range_end INTEGER,
+					manifest_path TEXT,
+					CHECK (post_count >= 0),
+					CHECK (media_count >= 0),
+					CHECK (size_bytes >= 0)
+				)
+			`); err != nil {
+				return fmt.Errorf("failed to create exports table: %w", err)
+			}
+
+			// Create indices for query performance
+			if _, err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_exports_did ON exports(did)"); err != nil {
+				return fmt.Errorf("failed to create idx_exports_did: %w", err)
+			}
+
+			if _, err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_exports_created_at ON exports(created_at DESC)"); err != nil {
+				return fmt.Errorf("failed to create idx_exports_created_at: %w", err)
+			}
+
+			if _, err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_exports_did_created ON exports(did, created_at DESC)"); err != nil {
+				return fmt.Errorf("failed to create idx_exports_did_created: %w", err)
+			}
+		}
+
+		// Update schema version
+		if _, err := tx.Exec("INSERT OR REPLACE INTO schema_version (version) VALUES (3)"); err != nil {
+			return fmt.Errorf("failed to update schema version to 3: %w", err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("failed to commit migration 3: %w", err)
+		}
+	}
+
 	return nil
 }
 

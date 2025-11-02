@@ -147,6 +147,9 @@ func main() {
 		r.Get("/export", h.ExportPage)
 		r.Post("/export/start", h.StartExport)
 		r.Get("/export/progress/{job_id}", h.ExportProgress)
+		r.Get("/export/row/*", h.ExportRow)           // Get single export row as HTML fragment
+		r.Get("/export/download/*", h.DownloadExport)
+		r.Delete("/export/delete/*", h.DeleteExport) // DELETE requires CSRF token (automatically applied)
 		r.Get("/media/{hash}", h.ServeMedia)
 	})
 

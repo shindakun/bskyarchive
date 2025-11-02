@@ -28,9 +28,9 @@ tests/
 Go 1.21+: Follow standard conventions
 
 ## Recent Changes
+- 005-export-download: Added Go 1.21+ (existing project standard)
 - 004-security-hardening: Added Go 1.25.3 (existing project standard)
 - 003-large-export-batching: Added Go 1.21+ + Go stdlib only (database/sql, encoding/csv, encoding/json, io, os, path/filepath, time) + modernc.org/sqlite (existing)
-- 002-archive-export: Added Go 1.21+ (existing project standard) + Go stdlib only (encoding/csv, encoding/json, io, os, path/filepath, time)
 
 <!-- MANUAL ADDITIONS START -->
 Kill Go process when finished with work.
