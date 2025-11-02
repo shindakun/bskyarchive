@@ -39,7 +39,7 @@
                 <p>Fetch all your posts from Bluesky. This may take a while depending on how many posts you have.</p>
                 <button hx-post="/archive/start"
                         hx-vals='{"type": "initial"}'
-                        hx-headers='{"Content-Type": "application/json"}'
+                        hx-headers='{"Content-Type": "application/json", "X-CSRF-Token": "{{.CSRFToken}}"}'
                         hx-swap="none">
                     Start Initial Archive
                 </button>
@@ -52,7 +52,7 @@
                 <p>Fetch only new posts since your last archive.</p>
                 <button hx-post="/archive/start"
                         hx-vals='{"type": "incremental"}'
-                        hx-headers='{"Content-Type": "application/json"}'
+                        hx-headers='{"Content-Type": "application/json", "X-CSRF-Token": "{{.CSRFToken}}"}'
                         hx-swap="none"
                         class="secondary">
                     Update Archive

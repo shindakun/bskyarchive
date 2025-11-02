@@ -40,7 +40,7 @@ func (h *Handlers) ExportPage(w http.ResponseWriter, r *http.Request) {
 		Status:  status,
 	}
 
-	if err := h.renderTemplate(w, "export", data); err != nil {
+	if err := h.renderTemplate(w, r, "export", data); err != nil {
 		h.logger.Printf("Error rendering export template: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -226,6 +226,14 @@ func (h *Handlers) ExportProgress(w http.ResponseWriter, r *http.Request) {
 
 	if !exists {
 		http.Error(w, "Job not found", http.StatusNotFound)
+		return
+	}
+
+	// Verify job ownership - users can only access their own exports
+	if job.Options.DID != session.DID {
+		h.logger.Printf("Security: Unauthorized export access attempt - user %s attempted to access job %s owned by %s",
+			session.DID, jobID, job.Options.DID)
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 

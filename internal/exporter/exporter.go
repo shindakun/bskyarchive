@@ -14,14 +14,21 @@ import (
 	"github.com/shindakun/bskyarchive/internal/version"
 )
 
-// CreateExportDirectory creates a timestamped export directory
+// CreateExportDirectory creates a per-user timestamped export directory
 // Returns the full path to the created directory
-func CreateExportDirectory(baseDir string) (string, error) {
+// The directory structure is: baseDir/{did}/{timestamp}
+func CreateExportDirectory(baseDir string, did string) (string, error) {
+	// Create per-user subdirectory structure
+	userDir := filepath.Join(baseDir, did)
+	if err := os.MkdirAll(userDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create user export directory: %w", err)
+	}
+
 	// Generate timestamp in filesystem-safe format (YYYY-MM-DD_HH-MM-SS)
 	timestamp := time.Now().Format("2006-01-02_15-04-05")
-	exportDir := filepath.Join(baseDir, timestamp)
+	exportDir := filepath.Join(userDir, timestamp)
 
-	// Create the directory with read/write/execute for owner, read/execute for group and others
+	// Create the timestamped directory with read/write/execute for owner, read/execute for group and others
 	if err := os.MkdirAll(exportDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create export directory: %w", err)
 	}
@@ -71,8 +78,8 @@ func Run(db *sql.DB, job *models.ExportJob, progressChan chan<- models.ExportPro
 	job.Progress.Status = models.ExportStatusRunning
 	progressChan <- job.Progress
 
-	// Step 1: Create export directory
-	exportDir, err := CreateExportDirectory(job.Options.OutputDir)
+	// Step 1: Create export directory with per-user isolation
+	exportDir, err := CreateExportDirectory(job.Options.OutputDir, job.Options.DID)
 	if err != nil {
 		job.Progress.Status = models.ExportStatusFailed
 		job.Progress.Error = fmt.Sprintf("Failed to create export directory: %v", err)

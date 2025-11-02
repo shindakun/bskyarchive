@@ -50,6 +50,8 @@
         </div>
 
         <form id="export-form" hx-post="/export/start" hx-swap="none" hx-on::after-request="handleExportStart(event)">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
             <!-- Format Selection -->
             <fieldset>
                 <legend>Export Format</legend>

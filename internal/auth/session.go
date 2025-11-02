@@ -25,16 +25,16 @@ type SessionManager struct {
 }
 
 // InitSessions creates a new session manager with 7-day expiration and HTTP-only cookies
-func InitSessions(secret string, db *sql.DB) *SessionManager {
+func InitSessions(secret string, maxAge int, secure bool, sameSite http.SameSite, db *sql.DB) *SessionManager {
 	store := sessions.NewCookieStore([]byte(secret))
 
 	// Configure session options
 	store.Options = &sessions.Options{
 		Path:     "/",
-		MaxAge:   604800, // 7 days in seconds
-		HttpOnly: true,   // Prevent JavaScript access
-		Secure:   false,  // TODO: Set to true in production with HTTPS
-		SameSite: http.SameSiteLaxMode,
+		MaxAge:   maxAge,
+		HttpOnly: true, // Prevent JavaScript access
+		Secure:   secure,
+		SameSite: sameSite,
 	}
 
 	return &SessionManager{
