@@ -9,22 +9,52 @@ server:
   shutdown_timeout: 30s
 
   # Security Configuration
+  # These settings protect against common web vulnerabilities when deployed with ngrok HTTPS
   security:
-    # CSRF Protection
-    csrf_enabled: true
-    csrf_field_name: "csrf_token"
+    # CSRF Protection (Cross-Site Request Forgery)
+    # Protects all POST/PUT/DELETE endpoints from CSRF attacks
+    # Note: GET requests and OAuth login endpoints are exempt
+    csrf_enabled: true              # Enable CSRF protection (recommended: true)
+    csrf_field_name: "csrf_token"   # HTML form field name for CSRF token
 
-    # Request Size Limit (10MB default)
-    max_request_bytes: 10485760  # 10MB in bytes
+    # Request Size Limit
+    # Protects against denial-of-service via large request bodies
+    # Requests exceeding this size will receive HTTP 413 (Payload Too Large)
+    max_request_bytes: 10485760  # 10MB in bytes (10 * 1024 * 1024)
 
     # Security Headers
+    # These headers are added to every HTTP response for defense-in-depth
     headers:
+      # X-Frame-Options: Prevents clickjacking attacks
+      # DENY = cannot be embedded in frames/iframes
+      # SAMEORIGIN = can only be embedded by same origin
       x_frame_options: "DENY"
+
+      # X-Content-Type-Options: Prevents MIME-sniffing vulnerabilities
+      # nosniff = browser must respect declared Content-Type
       x_content_type_options: "nosniff"
+
+      # X-XSS-Protection: Legacy XSS protection (deprecated but still useful for older browsers)
+      # 1; mode=block = enable filter and block page if XSS detected
       x_xss_protection: "1; mode=block"
+
+      # Referrer-Policy: Controls how much referrer information is sent
+      # strict-origin-when-cross-origin = send full URL for same-origin, only origin for cross-origin HTTPS
       referrer_policy: "strict-origin-when-cross-origin"
+
+      # Content-Security-Policy: Defines approved sources for content
+      # default-src 'self' = only load resources from same origin by default
+      # script-src includes 'unsafe-inline' 'unsafe-eval' for HTMX compatibility
+      # style-src 'unsafe-inline' for inline styles
+      # img-src includes data: for base64 images
+      # frame-ancestors 'none' prevents embedding (like X-Frame-Options)
       content_security_policy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'"
-      strict_transport_security: "max-age=31536000; includeSubDomains"  # Only set when HTTPS enabled
+
+      # Strict-Transport-Security (HSTS): Forces HTTPS connections
+      # Only applied when BASE_URL uses https:// (ngrok provides HTTPS)
+      # max-age=31536000 = remember for 1 year (31536000 seconds)
+      # includeSubDomains = also apply to all subdomains
+      strict_transport_security: "max-age=31536000; includeSubDomains"
 
 archive:
   db_path: "./data/archive.db"
@@ -38,12 +68,30 @@ oauth:
     - "atproto"
     - "transition:generic"
     - "transition:chat.bsky"
+
+  # Session Secret: Used for signing session cookies (REQUIRED)
+  # Must be set via environment variable SESSION_SECRET
+  # Generate with: openssl rand -base64 32
   session_secret: "${SESSION_SECRET}"
-  session_max_age: 604800  # 7 days in seconds
+
+  # Session Duration: How long user sessions remain valid
+  session_max_age: 604800  # 7 days in seconds (604800 = 7 * 24 * 60 * 60)
 
   # Cookie Security (auto-configured based on BASE_URL)
-  cookie_secure: "auto"    # auto/true/false - auto sets Secure=true when BASE_URL uses https://
-  cookie_samesite: "lax"   # lax (recommended for OAuth compatibility)
+  # These settings control session cookie security attributes
+
+  # cookie_secure: Controls the Secure flag on session cookies
+  # - "auto" (recommended): Automatically sets Secure=true when BASE_URL uses https://
+  # - "true": Always set Secure flag (requires HTTPS, breaks HTTP-only development)
+  # - "false": Never set Secure flag (NOT RECOMMENDED for production)
+  cookie_secure: "auto"
+
+  # cookie_samesite: Controls when cookies are sent in cross-site requests
+  # - "lax" (recommended): Cookies sent on same-site requests and top-level navigation
+  #   Required for OAuth flows to work correctly (allows redirect from auth provider)
+  # - "strict": Cookies only sent on same-site requests (may break OAuth)
+  # - "none": Cookies sent on all requests (requires Secure=true, not recommended)
+  cookie_samesite: "lax"
 
 rate_limit:
   requests_per_window: 300

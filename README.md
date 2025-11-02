@@ -240,10 +240,125 @@ Follow standard Go conventions. Use `gofmt` for formatting.
 
 ## Security
 
-- Sessions are stored with HTTP-only cookies (7-day expiration)
-- All passwords and secrets should be set via environment variables
-- Database uses write-ahead logging (WAL) for safe concurrent access
-- OAuth uses PKCE (Proof Key for Code Exchange) for security
+### Overview
+
+This application implements comprehensive security hardening for production deployment with ngrok HTTPS. All security features are enabled by default and work automatically when deployed with HTTPS.
+
+### Security Features
+
+**CSRF Protection (Cross-Site Request Forgery)**
+- All POST/PUT/DELETE endpoints require valid CSRF tokens
+- Automatic token injection in HTML forms and HTMX requests
+- OAuth login endpoints are exempt (OAuth has its own protection)
+- Invalid tokens return HTTP 403 Forbidden
+
+**Secure Session Cookies**
+- HTTP-only cookies prevent XSS access to session tokens
+- Secure flag automatically set when deployed with HTTPS (ngrok)
+- SameSite=Lax for OAuth compatibility
+- 7-day expiration (configurable)
+- Signed with SESSION_SECRET for integrity
+
+**Security Headers**
+- `X-Frame-Options: DENY` - Prevents clickjacking attacks
+- `X-Content-Type-Options: nosniff` - Prevents MIME-sniffing
+- `X-XSS-Protection: 1; mode=block` - Legacy XSS protection
+- `Referrer-Policy: strict-origin-when-cross-origin` - Controls referrer info
+- `Content-Security-Policy` - Restricts resource loading to same origin
+- `Strict-Transport-Security` - Forces HTTPS (auto-enabled with ngrok)
+
+**Request Size Limits**
+- Maximum request body size: 10MB (configurable)
+- Requests exceeding limit receive HTTP 413 (Payload Too Large)
+- Protects against denial-of-service attacks
+
+**Path Traversal Protection**
+- All file serving operations validate paths
+- Prevents access to files outside designated directories
+- Blocks `../` and URL-encoded traversal attempts
+- Security logging for blocked attempts
+
+**Export Directory Isolation**
+- Per-user export directories: `exports/{did}/timestamp/`
+- Users can only access their own exports
+- Job ownership verification on all export operations
+- Security logging for unauthorized access attempts
+
+### Configuration
+
+Security settings are in `config.yaml`. See the file for detailed comments on each option:
+
+```yaml
+server:
+  security:
+    # CSRF Protection
+    csrf_enabled: true
+    csrf_field_name: "csrf_token"
+
+    # Request Size Limit (10MB)
+    max_request_bytes: 10485760
+
+    # Security Headers (see config.yaml for full details)
+    headers:
+      x_frame_options: "DENY"
+      x_content_type_options: "nosniff"
+      # ... additional headers
+
+oauth:
+  # Cookie Security
+  cookie_secure: "auto"      # Auto-detect HTTPS from BASE_URL
+  cookie_samesite: "lax"     # Required for OAuth compatibility
+```
+
+### Production Deployment with ngrok
+
+**Recommended Setup:**
+
+1. **Generate session secret**
+   ```bash
+   export SESSION_SECRET=$(openssl rand -base64 32)
+   ```
+
+2. **Start ngrok tunnel**
+   ```bash
+   ngrok http 8080
+   ```
+
+3. **Set BASE_URL and start application**
+   ```bash
+   export BASE_URL="https://your-subdomain.ngrok.app"
+   ./bskyarchive
+   ```
+
+**Security Checklist:**
+- ✓ ngrok provides HTTPS/TLS 1.3 termination
+- ✓ BASE_URL configured with https:// URL
+- ✓ SESSION_SECRET set to strong random value (32+ chars)
+- ✓ All security features enabled in config.yaml (default)
+- ✓ Application logs show "Cookie security enabled: true"
+
+**Architecture:**
+- ngrok handles: HTTPS termination, TLS certificates, public endpoint
+- Application handles: CSRF, secure cookies, security headers, authorization
+- Application runs: HTTP on localhost:8080 (behind ngrok proxy)
+
+### Additional Security Practices
+
+- **Secrets Management**: Never commit SESSION_SECRET to version control
+- **Database Security**: SQLite uses WAL mode for safe concurrent access
+- **OAuth Security**: PKCE (Proof Key for Code Exchange) prevents authorization code interception
+- **Local-First**: All archived data stays on your machine
+- **No Telemetry**: Application doesn't phone home or send analytics
+
+### Security Monitoring
+
+The application logs security-relevant events:
+- CSRF token validation failures
+- Path traversal attempts (blocked)
+- Unauthorized export access attempts
+- Cookie security configuration on startup
+
+Check logs regularly for suspicious activity.
 
 ## Core Principles
 
