@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -316,6 +317,25 @@ func (h *Handlers) ExportProgress(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// sanitizeID converts an export ID to a valid CSS selector ID
+// by replacing special characters with hyphens
+func sanitizeID(id string) string {
+	replacer := strings.NewReplacer(
+		":", "-",
+		"/", "-",
+		" ", "-",
+	)
+	sanitized := replacer.Replace(id)
+	// Remove any remaining non-alphanumeric characters except hyphens
+	var result strings.Builder
+	for _, ch := range sanitized {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' {
+			result.WriteRune(ch)
+		}
+	}
+	return result.String()
+}
+
 // ExportRow returns a single export as an HTML table row fragment for HTMX
 func (h *Handlers) ExportRow(w http.ResponseWriter, r *http.Request) {
 	session, ok := auth.GetSessionFromContext(r.Context())
@@ -349,7 +369,8 @@ func (h *Handlers) ExportRow(w http.ResponseWriter, r *http.Request) {
 
 	// Return HTML table row
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<tr>
+	sanitizedID := sanitizeID(exportRecord.ID)
+	fmt.Fprintf(w, `<tr id="export-%s" data-export-id="%s">
 		<td>%s</td>
 		<td>%s</td>
 		<td>%s</td>
@@ -357,32 +378,50 @@ func (h *Handlers) ExportRow(w http.ResponseWriter, r *http.Request) {
 		<td>%d</td>
 		<td>%s</td>
 		<td>
-			<div style="display: flex; gap: 0.5rem;">
-				<a href="/export/download/%s" role="button" class="secondary" style="margin: 0; flex: 1;">
-					Download ZIP
-				</a>
-				<button type="button"
-						class="outline"
-						style="margin: 0;"
-						hx-delete="/export/delete/%s"
-						hx-confirm="Are you sure you want to delete this export? This action cannot be undone."
-						hx-target="closest tr"
-						hx-swap="outerHTML"
-						hx-headers='{"X-CSRF-Token": "%s"}'>
-					Delete
-				</button>
+			<div style="display: flex; flex-direction: column; gap: 0.5rem;">
+				<div style="display: flex; gap: 0.5rem;">
+					<a href="/export/download/%s"
+					   role="button"
+					   class="secondary download-btn"
+					   style="margin: 0; flex: 1;"
+					   data-export-id="%s">
+						Download ZIP
+					</a>
+					<button type="button"
+							class="outline delete-export-btn"
+							style="margin: 0;"
+							hx-delete="/export/delete/%s"
+							hx-confirm="Are you sure you want to delete this export? This action cannot be undone."
+							hx-target="#export-%s"
+							hx-swap="outerHTML"
+							hx-headers='{"X-CSRF-Token": "%s"}'>
+						Delete
+					</button>
+				</div>
+				<label style="margin: 0; font-size: 0.875rem;">
+					<input type="checkbox"
+					       class="delete-after-checkbox"
+					       data-export-id="%s"
+					       style="margin-right: 0.25rem;">
+					Delete after download
+				</label>
 			</div>
 		</td>
 	</tr>`,
+		sanitizedID,     // For tr id="export-%s"
+		exportRecord.ID, // For tr data-export-id="%s" (original ID)
 		exportRecord.CreatedAt.Format("2006-01-02 15:04"),
 		exportRecord.Format,
 		exportRecord.DateRangeString(),
 		exportRecord.PostCount,
 		exportRecord.MediaCount,
 		exportRecord.HumanSize(),
-		exportRecord.ID,
-		exportRecord.ID,
-		csrfToken,
+		exportRecord.ID, // For download link href
+		exportRecord.ID, // For download button data-export-id
+		exportRecord.ID, // For delete button hx-delete
+		sanitizedID,     // For delete button hx-target="#export-%s"
+		csrfToken,       // For delete button X-CSRF-Token
+		exportRecord.ID, // For checkbox data-export-id
 	)
 }
 
@@ -543,9 +582,10 @@ func (h *Handlers) DeleteExport(w http.ResponseWriter, r *http.Request) {
 	h.logger.Printf("Delete completed: user=%s export=%s",
 		session.DID, exportID)
 
-	// Return empty response with 200 OK for HTMX to remove the row
-	// HTMX needs a 200 response to perform the swap operation
+	// Return 200 OK with empty body for HTMX outerHTML swap
+	// The hx-swap="outerHTML" with empty response will remove the target element
 	w.WriteHeader(http.StatusOK)
+	w.Write([]byte{})
 }
 
 // deleteExportInternal performs the actual deletion of export files and database record

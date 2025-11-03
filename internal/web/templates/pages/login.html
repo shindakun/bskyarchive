@@ -1,0 +1,73 @@
+{{define "title"}}Login - Bluesky Archive{{end}}
+
+{{define "nav"}}
+<nav class="container">
+    <ul>
+        <li><strong>Bluesky Archive</strong></li>
+    </ul>
+    <ul>
+        <li><a href="/about">About</a></li>
+    </ul>
+</nav>
+{{end}}
+
+{{define "content"}}
+<section class="container">
+    <!-- Page header -->
+    <hgroup>
+        <h1>Login with Bluesky</h1>
+        <h2>Archive your Bluesky posts and media for safekeeping</h2>
+    </hgroup>
+
+    <!-- Error display -->
+    {{if .Error}}
+    <article aria-label="Error" style="background-color: var(--del-color); border-left: 4px solid #dc3545;">
+        <header><strong>Error</strong></header>
+        <p>{{.Error}}</p>
+    </article>
+    {{end}}
+
+    <!-- Success message (rarely used for login, but included for consistency) -->
+    {{if .Message}}
+    <article aria-label="Success">
+        <header><strong>Success</strong></header>
+        <p>{{.Message}}</p>
+    </article>
+    {{end}}
+
+    <!-- Login form -->
+    <article>
+        <header><strong>Sign In</strong></header>
+
+        <p>Enter your Bluesky handle to get started. You'll be redirected to Bluesky to authorize this application.</p>
+
+        <form method="POST" action="/auth/login">
+            <label for="handle">
+                Bluesky Handle
+                <input type="text"
+                       id="handle"
+                       name="handle"
+                       placeholder="user.bsky.social"
+                       required
+                       value="{{.Handle}}"
+                       autocomplete="username">
+            </label>
+            <small>Your full Bluesky handle, including the domain (e.g., user.bsky.social or user.custom-domain.com)</small>
+
+            <button type="submit">Continue with Bluesky</button>
+        </form>
+    </article>
+
+    <!-- About This Application -->
+    <article>
+        <header><strong>About This Application</strong></header>
+
+        <p><strong>Bluesky Archive</strong> is a local-first backup tool that helps you preserve your Bluesky posts, media, and conversations. Your data is stored on your own computer, giving you complete control and ownership.</p>
+
+        <h3>Privacy First</h3>
+        <p>This application runs on your machine and stores everything locally. No third-party servers have access to your archived content. Your Bluesky credentials are never stored—we use secure OAuth authentication that expires after use.</p>
+
+        <p><a href="/about">Learn more about how this works →</a></p>
+    </article>
+</section>
+{{end}}

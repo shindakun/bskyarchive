@@ -74,7 +74,54 @@ func (h *Handlers) About(w http.ResponseWriter, r *http.Request) {
 
 // Login initiates OAuth flow
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
-	h.oauthManager.HandleOAuthLogin(w, r)
+	// GET: Display login form
+	if r.Method == http.MethodGet {
+		data := TemplateData{
+			Error:   "",
+			Message: "",
+		}
+		if err := h.renderTemplate(w, r, "login", data); err != nil {
+			h.logger.Printf("Error rendering login template: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// POST: Handle handle submission and start OAuth flow
+	handle := r.FormValue("handle")
+	if handle == "" {
+		// Validation error - re-render template with error
+		data := TemplateData{
+			Error:   "Bluesky handle is required",
+			Message: "",
+			Handle:  handle, // Repopulate form (empty in this case)
+		}
+		if err := h.renderTemplate(w, r, "login", data); err != nil {
+			h.logger.Printf("Error rendering login template with error: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Start OAuth flow
+	authURL, err := h.oauthManager.StartOAuthFlow(r.Context(), handle)
+	if err != nil {
+		// OAuth error - re-render template with error
+		h.logger.Printf("Failed to start OAuth flow for handle %s: %v", handle, err)
+		data := TemplateData{
+			Error:   "Failed to connect to Bluesky. Please try again.",
+			Message: "",
+			Handle:  handle, // Repopulate form so user doesn't have to retype
+		}
+		if renderErr := h.renderTemplate(w, r, "login", data); renderErr != nil {
+			h.logger.Printf("Error rendering login template with OAuth error: %v", renderErr)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Redirect to Bluesky authorization page
+	http.Redirect(w, r, authURL, http.StatusSeeOther)
 }
 
 // Callback handles OAuth callback

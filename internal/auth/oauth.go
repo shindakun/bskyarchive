@@ -31,45 +31,11 @@ func InitOAuth(baseURL string, scopes []string, sessionManager *SessionManager) 
 	}
 }
 
-// HandleOAuthLogin initiates the OAuth flow by prompting for handle
+// HandleOAuthLogin is deprecated - login is now handled in internal/web/handlers/handlers.go
+// This method is kept for backwards compatibility but should not be used.
+// Use handlers.Login() and oauthManager.StartOAuthFlow() instead.
 func (om *OAuthManager) HandleOAuthLogin(w http.ResponseWriter, r *http.Request) {
-	// For now, use a simple form to get the handle
-	// This will be replaced with a proper template in later tasks
-	if r.Method == http.MethodGet {
-		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(`
-<!DOCTYPE html>
-<html>
-<head><title>Login</title></head>
-<body>
-	<h1>Login with Bluesky</h1>
-	<form method="POST">
-		<label>Handle: <input type="text" name="handle" placeholder="user.bsky.social" required></label>
-		<button type="submit">Login</button>
-	</form>
-</body>
-</html>
-		`))
-		return
-	}
-
-	// POST: Start OAuth flow with handle
-	handle := r.FormValue("handle")
-	if handle == "" {
-		http.Error(w, "Handle is required", http.StatusBadRequest)
-		return
-	}
-
-	// Start OAuth flow
-	ctx := r.Context()
-	flowState, err := om.client.StartAuthFlow(ctx, handle)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to start OAuth flow: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Redirect to authorization URL
-	http.Redirect(w, r, flowState.AuthURL, http.StatusSeeOther)
+	http.Error(w, "This endpoint is deprecated. Please use /auth/login", http.StatusGone)
 }
 
 // HandleOAuthCallback completes the OAuth flow using bskyoauth's built-in handler
@@ -148,4 +114,13 @@ func (om *OAuthManager) RefreshAccessToken(did, refreshToken string) (string, st
 // GetBskySession retrieves the bskyoauth session by session ID
 func (om *OAuthManager) GetBskySession(sessionID string) (*bskyoauth.Session, error) {
 	return om.client.GetSession(sessionID)
+}
+
+// StartOAuthFlow initiates an OAuth flow for the given handle and returns the authorization URL
+func (om *OAuthManager) StartOAuthFlow(ctx context.Context, handle string) (string, error) {
+	flowState, err := om.client.StartAuthFlow(ctx, handle)
+	if err != nil {
+		return "", fmt.Errorf("failed to start OAuth flow: %w", err)
+	}
+	return flowState.AuthURL, nil
 }

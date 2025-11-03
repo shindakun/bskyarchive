@@ -140,7 +140,7 @@
                 </thead>
                 <tbody id="exports-tbody">
                     {{range .Exports}}
-                    <tr>
+                    <tr id="export-{{sanitizeID .ID}}" data-export-id="{{.ID}}">
                         <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
                         <td>{{.Format}}</td>
                         <td>{{.DateRangeString}}</td>
@@ -158,11 +158,11 @@
                                         Download ZIP
                                     </a>
                                     <button type="button"
-                                            class="outline"
+                                            class="outline delete-export-btn"
                                             style="margin: 0;"
                                             hx-delete="/export/delete/{{.ID}}"
                                             hx-confirm="Are you sure you want to delete this export? This action cannot be undone."
-                                            hx-target="closest tr"
+                                            hx-target="#export-{{sanitizeID .ID}}"
                                             hx-swap="outerHTML"
                                             hx-headers='{"X-CSRF-Token": "{{$.CSRFToken}}"}'>
                                         Delete
