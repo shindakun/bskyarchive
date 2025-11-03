@@ -74,6 +74,24 @@ func templateFuncs() template.FuncMap {
 			}
 			return false
 		},
+		"sanitizeID": func(id string) string {
+			// Replace special characters with hyphens to create valid CSS selectors
+			// Replaces : / and any other non-alphanumeric characters
+			replacer := strings.NewReplacer(
+				":", "-",
+				"/", "-",
+				" ", "-",
+			)
+			sanitized := replacer.Replace(id)
+			// Remove any remaining non-alphanumeric characters except hyphens
+			var result strings.Builder
+			for _, ch := range sanitized {
+				if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' {
+					result.WriteRune(ch)
+				}
+			}
+			return result.String()
+		},
 	}
 }
 
