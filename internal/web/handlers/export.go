@@ -367,12 +367,12 @@ func (h *Handlers) ExportRow(w http.ResponseWriter, r *http.Request) {
 						Download ZIP
 					</a>
 					<button type="button"
-							class="outline"
+							class="outline delete-export-btn"
 							style="margin: 0;"
 							hx-delete="/export/delete/%s"
 							hx-confirm="Are you sure you want to delete this export? This action cannot be undone."
 							hx-target="closest tr"
-							hx-swap="outerHTML"
+							hx-swap="delete"
 							hx-headers='{"X-CSRF-Token": "%s"}'>
 						Delete
 					</button>
