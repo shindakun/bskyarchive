@@ -124,14 +124,14 @@ Both stories modify the same handler file and create the same template, so they 
 
 ### Implementation Tasks (US3)
 
-- [ ] T041 [US3] Add "About This Application" article section to login template content block
-- [ ] T042 [US3] Write description paragraph explaining Bluesky Archive's purpose (local-first backup tool)
-- [ ] T043 [US3] Add "Privacy First" paragraph explaining data ownership and local storage
-- [ ] T044 [US3] Add link to /about page with text "Learn more about how this works →"
-- [ ] T045 [US3] Verify About page exists and is accessible from login page
-- [ ] T046 [US3] Manual Test: Read contextual information as a new user, verify it's clear and helpful
-- [ ] T047 [US3] Manual Test: Click "Learn more" link, verify About page loads
-- [ ] T048 [US3] Manual Test: Verify contextual text doesn't clutter the form (good visual balance)
+- [X] T041 [US3] Add "About This Application" article section to login template content block
+- [X] T042 [US3] Write description paragraph explaining Bluesky Archive's purpose (local-first backup tool)
+- [X] T043 [US3] Add "Privacy First" paragraph explaining data ownership and local storage
+- [X] T044 [US3] Add link to /about page with text "Learn more about how this works →"
+- [X] T045 [US3] Verify About page exists and is accessible from login page
+- [X] T046 [US3] Manual Test: Read contextual information as a new user, verify it's clear and helpful
+- [X] T047 [US3] Manual Test: Click "Learn more" link, verify About page loads
+- [X] T048 [US3] Manual Test: Verify contextual text doesn't clutter the form (good visual balance)
 
 **Checkpoint**: User Story 3 complete - Login page provides helpful context for first-time users.
 
