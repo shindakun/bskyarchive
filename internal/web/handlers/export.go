@@ -559,8 +559,8 @@ func (h *Handlers) DeleteExport(w http.ResponseWriter, r *http.Request) {
 	h.logger.Printf("Delete completed: user=%s export=%s",
 		session.DID, exportID)
 
-	// Return 200 OK with empty body for HTMX delete swap
-	// The hx-swap="delete" will remove the target element on 2xx response
+	// Return 200 OK with empty body for HTMX outerHTML swap
+	// The hx-swap="outerHTML" with empty response will remove the target element
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte{})
 }
