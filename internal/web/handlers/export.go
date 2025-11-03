@@ -357,20 +357,33 @@ func (h *Handlers) ExportRow(w http.ResponseWriter, r *http.Request) {
 		<td>%d</td>
 		<td>%s</td>
 		<td>
-			<div style="display: flex; gap: 0.5rem;">
-				<a href="/export/download/%s" role="button" class="secondary" style="margin: 0; flex: 1;">
-					Download ZIP
-				</a>
-				<button type="button"
-						class="outline"
-						style="margin: 0;"
-						hx-delete="/export/delete/%s"
-						hx-confirm="Are you sure you want to delete this export? This action cannot be undone."
-						hx-target="closest tr"
-						hx-swap="outerHTML"
-						hx-headers='{"X-CSRF-Token": "%s"}'>
-					Delete
-				</button>
+			<div style="display: flex; flex-direction: column; gap: 0.5rem;">
+				<div style="display: flex; gap: 0.5rem;">
+					<a href="/export/download/%s"
+					   role="button"
+					   class="secondary download-btn"
+					   style="margin: 0; flex: 1;"
+					   data-export-id="%s">
+						Download ZIP
+					</a>
+					<button type="button"
+							class="outline"
+							style="margin: 0;"
+							hx-delete="/export/delete/%s"
+							hx-confirm="Are you sure you want to delete this export? This action cannot be undone."
+							hx-target="closest tr"
+							hx-swap="outerHTML"
+							hx-headers='{"X-CSRF-Token": "%s"}'>
+						Delete
+					</button>
+				</div>
+				<label style="margin: 0; font-size: 0.875rem;">
+					<input type="checkbox"
+					       class="delete-after-checkbox"
+					       data-export-id="%s"
+					       style="margin-right: 0.25rem;">
+					Delete after download
+				</label>
 			</div>
 		</td>
 	</tr>`,
@@ -382,7 +395,9 @@ func (h *Handlers) ExportRow(w http.ResponseWriter, r *http.Request) {
 		exportRecord.HumanSize(),
 		exportRecord.ID,
 		exportRecord.ID,
+		exportRecord.ID,
 		csrfToken,
+		exportRecord.ID,
 	)
 }
 
