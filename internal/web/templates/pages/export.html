@@ -162,7 +162,7 @@
                                             style="margin: 0;"
                                             hx-delete="/export/delete/{{.ID}}"
                                             hx-confirm="Are you sure you want to delete this export? This action cannot be undone."
-                                            hx-target="closest tr"
+                                            hx-target="#export-{{.ID}}"
                                             hx-swap="delete"
                                             hx-headers='{"X-CSRF-Token": "{{$.CSRFToken}}"}'>
                                         Delete
