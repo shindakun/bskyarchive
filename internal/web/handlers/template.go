@@ -14,6 +14,7 @@ import (
 type TemplateData struct {
 	Error   string
 	Message string
+	Handle  string // For login form - repopulates handle after validation errors
 	Session interface{}
 	Status  *models.ArchiveStatus
 	Posts   []models.Post
