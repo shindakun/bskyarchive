@@ -140,7 +140,7 @@
                 </thead>
                 <tbody id="exports-tbody">
                     {{range .Exports}}
-                    <tr>
+                    <tr id="export-{{.ID}}">
                         <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
                         <td>{{.Format}}</td>
                         <td>{{.DateRangeString}}</td>

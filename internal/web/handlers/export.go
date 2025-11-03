@@ -349,7 +349,7 @@ func (h *Handlers) ExportRow(w http.ResponseWriter, r *http.Request) {
 
 	// Return HTML table row
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<tr>
+	fmt.Fprintf(w, `<tr id="export-%s">
 		<td>%s</td>
 		<td>%s</td>
 		<td>%s</td>
@@ -387,17 +387,18 @@ func (h *Handlers) ExportRow(w http.ResponseWriter, r *http.Request) {
 			</div>
 		</td>
 	</tr>`,
+		exportRecord.ID, // For tr id="export-%s"
 		exportRecord.CreatedAt.Format("2006-01-02 15:04"),
 		exportRecord.Format,
 		exportRecord.DateRangeString(),
 		exportRecord.PostCount,
 		exportRecord.MediaCount,
 		exportRecord.HumanSize(),
-		exportRecord.ID,
-		exportRecord.ID,
-		exportRecord.ID,
-		csrfToken,
-		exportRecord.ID,
+		exportRecord.ID, // For download link href
+		exportRecord.ID, // For download button data-export-id
+		exportRecord.ID, // For delete button hx-delete
+		csrfToken,       // For delete button X-CSRF-Token
+		exportRecord.ID, // For checkbox data-export-id
 	)
 }
 
@@ -558,9 +559,10 @@ func (h *Handlers) DeleteExport(w http.ResponseWriter, r *http.Request) {
 	h.logger.Printf("Delete completed: user=%s export=%s",
 		session.DID, exportID)
 
-	// Return empty response with 200 OK for HTMX to remove the row
-	// HTMX needs a 200 response to perform the swap operation
+	// Return 200 OK with empty body for HTMX delete swap
+	// The hx-swap="delete" will remove the target element on 2xx response
 	w.WriteHeader(http.StatusOK)
+	w.Write([]byte{})
 }
 
 // deleteExportInternal performs the actual deletion of export files and database record
